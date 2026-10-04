@@ -1,0 +1,72 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# spec: 2026-09-09 golang-127 release.yml concurrency block, carried verbatim
+concurrency:
+  group: >-
+    release-${{ github.event_name == 'pull_request'
+                && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: macos-26
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      publish: ${{ steps.ver.outputs.release }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install mavericks-shipyard
+        uses: Mavergreen/shipyard/.github/actions/install@v1
+      - name: Record the pre-build tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh" --record
+      - uses: actions/setup-go@v7
+        with: { go-version: stable }
+      - name: Run the repo's tests
+        run: sh "$SHIPYARD_SCRIPTS/run-repo-tests.sh"
+      - name: Decide the version
+        id: ver
+        run: |
+          set -eu
+          v=$(tr -d '[:space:]' < UPSTREAM_VERSION)
+          printf '%s\n' "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::UPSTREAM_VERSION '$v' is not x.y.z"; exit 1; }
+          rel=yes
+          git rev-parse -q --verify "refs/tags/v$v" >/dev/null && rel=no
+          [ "$GITHUB_REF_NAME" = main ] || rel=no
+          [ "$GITHUB_EVENT_NAME" = push ] || [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || rel=no
+          echo "version $v (publish=$rel)"
+          { echo "version=$v"; echo "release=$rel"; } >> "$GITHUB_OUTPUT"
+      - name: Build the tarball
+        run: sh build/tarball.sh "$RUNNER_TEMP/dist"
+      - name: Generate the release notes
+        run: |
+          sh "$SHIPYARD_SCRIPTS/release-notes.sh" \
+            --tag "v${{ steps.ver.outputs.version }}" --version "${{ steps.ver.outputs.version }}" \
+            --product golang-port --out "$RUNNER_TEMP/dist/RELEASE_NOTES.md"
+      - name: The build must not have written into the source tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: golang-port
+          path: ${{ runner.temp }}/dist/*
+
+  publish:
+    needs: build
+    if: needs.build.outputs.publish == 'yes'
+    permissions:
+      contents: write
+    uses: Mavergreen/shipyard/.github/workflows/publish-release.yml@v1
+    with:
+      version: v${{ needs.build.outputs.version }}
+      artifact: golang-port

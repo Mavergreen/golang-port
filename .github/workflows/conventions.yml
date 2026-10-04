@@ -1,0 +1,12 @@
+name: conventions
+
+# spec: shipyard check-family-conventions.sh -- the checks live in shipyard, so this file stays three lines
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  conventions:
+    uses: Mavergreen/shipyard/.github/workflows/family-conventions.yml@v1

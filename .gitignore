@@ -1,2 +1,6 @@
+/VERSION
+/dist/
 ._*
 .DS_Store
+docs/
+.superpowers/
