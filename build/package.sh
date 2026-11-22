@@ -31,13 +31,13 @@ if [ "$variant" = native ]; then
   name="Go $gominor for Mavericks"
   title="go$GO_LINE — modern Go $gominor for OS X 10.9"
   wrapper=mavericks-clang; req=clang22
-  upd_default="/updater/go$GO_LINE-updater.app"
+  upd_default="$MAVERICKS_BUILD_ROOT/golang-updater/go$GO_LINE-updater.app"
 else
   src="$WORK/staging-cross"; prefix="$CROSS_PREFIX"; product="go$GO_LINE-cross"; line="$GO_LINE-cross"
   name="Go $gominor cross toolchain for Mavericks"
   title="go$GO_LINE-cross — build 10.9 programs on modern macOS"
   wrapper=mavericks-cross-clang; req=clang22-cross
-  upd_default="/updater-cross/go$GO_LINE-cross-updater.app"
+  upd_default="$MAVERICKS_BUILD_ROOT/golang-updater-cross/go$GO_LINE-cross-updater.app"
 fi
 [ -x "$src$prefix/bin/go" ] || die "no $src$prefix/bin/go -- run build-$variant.sh first"
 [ -x "$src$prefix/bin/$wrapper" ] || die "no $wrapper in $src$prefix/bin -- run build-$variant.sh first"
