@@ -1,0 +1,1 @@
+The certificate trust code that the Go 1.26 and 1.27 toolchains for Mavericks each carried now lives in one place, released as a tarball both use.

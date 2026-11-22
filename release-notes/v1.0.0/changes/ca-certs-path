@@ -1,0 +1,1 @@
+Go 1.26 for Mavericks now also reads the CA bundle that the ca-certs package installs, as Go 1.27 already did.
