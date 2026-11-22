@@ -15,4 +15,9 @@ clang22="${MAVERGREEN_CLANG22:-/usr/local/mavergreen/clang22}"
 [ -x "$clang22/bin/llvm-nm" ] && : "${NM:=$clang22/bin/llvm-nm}"
 [ -x "$clang22/bin/llvm-strings" ] && : "${STRINGS:=$clang22/bin/llvm-strings}"
 export LIPO OTOOL NM STRINGS
+# spec: PORT.md, the build chain -- off macOS there is no otool or nm that reads Mach-O, so without clang22 say so rather than fall back to the host's.
+if [ "$(uname -s)" != Darwin ] && [ ! -x "$clang22/bin/llvm-otool" ]; then
+  echo "compat-guard: no clang22 at $clang22 and this host is not macOS, so there is no Mach-O reader -- install clang22 (install@v1 products: clang22) or set MAVERGREEN_CLANG22" >&2
+  exit 1
+fi
 MAVERICKS_REQUIRE_DEFINED_SYMBOLS='_clock_gettime' sh "$SHIPYARD_SCRIPTS/assert_binary_compatible.sh" "$@"
