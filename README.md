@@ -1,7 +1,8 @@
 # golang-port
 
-**What:** the trust overlay that makes Go on Mac OS X 10.9 trust the right certificates.
-Every Mavergreen Go line (`golang-126`, `golang-127`, …) applies it.
+**What:** the trust overlay that makes Go on Mac OS X 10.9 trust the right certificates, and the
+build chain (`build/`) that turns a line's inputs into its toolchains, pkgs and Linux cross archive
+on Linux, a modern Mac or 10.9. Every Mavergreen Go line (`golang-126`, `golang-127`, …) uses both.
 
 **Why it's here:** so the lines don't each carry their own copy.
 
