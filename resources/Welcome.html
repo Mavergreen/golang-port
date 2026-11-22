@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head><body style="font-family:-apple-system,Helvetica,sans-serif;font-size:12px">
+<p>This installs a <b>modern Go @GO_MINOR@ toolchain</b>, patched to build and run on Mac&nbsp;OS&nbsp;X&nbsp;10.9
+(Mavericks), into <code>/usr/local/mavergreen/go@GO_LINE@/</code>.</p>
+<p>Open a new Terminal window: <code>go</code> and <code>go-@GO_LINE@</code> are on your <code>PATH</code>, and
+<code>go build</code> works out of the box &mdash; cgo included &mdash; producing 10.9-safe binaries with
+modern TLS (verified against the system keychain plus a bundled CA set).</p>
+<p>Every <code>go build</code> for 10.9 links with <b>clang22</b>, pure-Go programs too, so this installer brings
+clang22 in with it. You do not need the Command Line Tools.</p>
+<p>A background updater (Sparkle) checks daily for new releases. Built from
+<a href="https://go.dev/dl/">go.dev</a> source; no Apple prebuilt toolchain is redistributed.</p>
+</body></html>
