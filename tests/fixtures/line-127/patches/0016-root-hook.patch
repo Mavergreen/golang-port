@@ -1,0 +1,8 @@
+Fixture hook patch: edits src/crypto/x509/root.go (replaces one line, so it cannot apply by fuzz alone).
+--- src/crypto/x509/root.go.orig
++++ src/crypto/x509/root.go
+@@ -1,3 +1,3 @@
+ package x509
+ 
+-func loadSystemRoots() {}
++func loadSystemRoots() {} // hook applied
