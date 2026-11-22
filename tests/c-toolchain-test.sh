@@ -1,0 +1,129 @@
+#!/bin/sh
+# platform: host-agnostic
+here=$(cd "$(dirname "$0")/.." && pwd)
+t=$(mktemp -d "${TMPDIR:-/tmp}/c-toolchain-test.XXXXXX") || exit 1
+[ -d "$t" ] || exit 1
+trap 'rm -rf "$t"' EXIT
+
+fail() { echo "FAIL: $*"; exit 1; }
+
+fx="$here/tests/fixtures/line-127"
+want_clang=22.1.8-mavericks.25
+want_recaulk=$(tr -d ' \t\r\n' < "$fx/components/recaulk/version")
+
+# spec: build/c-toolchain.sh -- MAVERGREEN_PREFIX is test-only; it relocates every product the script checks
+# spec: tests -- mkplist <dir> <version> writes a product's mavergreen.plist
+mkplist() {
+  cat > "$1/mavergreen.plist" <<PL
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+  <key>identifier</key>
+  <string>dev.mavergreen.fixture</string>
+  <key>version</key>
+  <string>$2</string>
+</dict>
+</plist>
+PL
+}
+
+# spec: tests -- mkprefix <dir> [clang-dir-name] builds a fixture family prefix: a clang that echoes its argv, an
+#       llvm-lipo that reports x86_64, sdk109, recaulk, all at the line's pins
+mkprefix() {
+  p=$1; c=${2:-clang22}
+  mkdir -p "$p/$c/bin" "$p/sdk109/SDKs/MacOSX10.9.sdk" "$p/recaulk/lib"
+  printf '#!/bin/sh\necho "$0 $*"\n' > "$p/$c/bin/clang"
+  printf '#!/bin/sh\necho x86_64\n' > "$p/$c/bin/llvm-lipo"
+  chmod +x "$p/$c/bin/clang" "$p/$c/bin/llvm-lipo"
+  : > "$p/recaulk/lib/librecaulk.a"
+  mkplist "$p/$c" "$want_clang"; mkplist "$p/sdk109" 20261012.2; mkplist "$p/recaulk" "$want_recaulk"
+}
+
+# run <prefix> [args] -- runs c-toolchain.sh on line 127; stdout in $t/out, stderr in $t/err, status in $rc
+run() {
+  p=$1; shift
+  rc=0
+  MAVERGREEN_PREFIX=$p MAVERICKS_WORK="$t/work" LINE_ROOT="$fx" sh "$here/build/c-toolchain.sh" "$@" >"$t/out" 2>"$t/err" || rc=$?
+}
+
+has() { grep -q -- "$2" "$1" || fail "$3: want '$2' in: $(cat "$1")"; }
+hasnt() { grep -q -- "$2" "$1" && fail "$3: did not want '$2' in: $(cat "$1")"; return 0; }
+
+# --- good prefix: prints the wrapper path; -c has no Recaulk, a link has it
+P="$t/mg"; mkprefix "$P"
+run "$P"
+[ "$rc" = 0 ] || fail "good prefix: exit $rc: $(cat "$t/err")"
+cc=$(cat "$t/out")
+[ "$cc" = "$t/work/cc/bin/clang" ] || fail "wrapper path: got $cc"
+[ -x "$cc" ] || fail "wrapper not executable"
+"$cc" -c x.c -o x.o > "$t/c" || fail "wrapper -c"
+has "$t/c" "^$P/clang22/bin/clang -no-canonical-prefixes --no-default-config --target=x86_64-apple-macos10.9 -isysroot $P/sdk109/SDKs/MacOSX10.9.sdk -mmacosx-version-min=10.9 -c x.c -o x.o\$" "-c call"
+hasnt "$t/c" recaulk "-c call"
+for f in -E -S; do
+  "$cc" $f x.c > "$t/c"; hasnt "$t/c" recaulk "$f call"
+done
+"$cc" x.o -o x > "$t/l" || fail "wrapper link"
+has "$t/l" "^$P/clang22/bin/clang " "link call"
+has "$t/l" -fuse-ld=lld "link call"
+has "$t/l" "--ld-path=$P/clang22/bin/ld64.lld" "link call"
+has "$t/l" "$P/recaulk/lib/librecaulk.a" "link call"
+has "$t/l" -Wl,-U,_xpc_date_create_from_current "link call"
+has "$t/l" "-isysroot $P/sdk109/SDKs/MacOSX10.9.sdk" "link call"
+# a native build does not need sdk113
+[ ! -d "$P/sdk113" ] || fail "fixture should have no sdk113"
+
+# --- sdk113 is checked only with --with-sdk113
+run "$P" --with-sdk113
+[ "$rc" = 1 ] || fail "--with-sdk113 without sdk113: exit $rc"
+has "$t/err" sdk113 "--with-sdk113"; has "$t/err" "longboat sdk install 11.3" "--with-sdk113"
+mkdir -p "$P/sdk113/SDKs/MacOSX11.3.sdk"; mkplist "$P/sdk113" 20260101.1
+run "$P" --with-sdk113
+[ "$rc" = 0 ] || fail "--with-sdk113 with sdk113: exit $rc: $(cat "$t/err")"
+
+# --- clang22 at another version
+Q="$t/mg-clang"; mkprefix "$Q"; mkplist "$Q/clang22" 22.1.7-mavericks.1
+run "$Q"
+[ "$rc" = 1 ] || fail "wrong clang22: exit $rc"
+for s in clang22 22.1.7-mavericks.1 "$want_clang" "products: clang22@$want_clang"; do has "$t/err" "$s" "wrong clang22"; done
+
+# --- recaulk at another version
+Q="$t/mg-recaulk"; mkprefix "$Q"; mkplist "$Q/recaulk" 20200101.9
+run "$Q"
+[ "$rc" = 1 ] || fail "wrong recaulk: exit $rc"
+for s in recaulk 20200101.9 "$want_recaulk" "products: recaulk@$want_recaulk"; do has "$t/err" "$s" "wrong recaulk"; done
+
+# --- recaulk without an x86_64 slice
+Q="$t/mg-slice"; mkprefix "$Q"; printf '#!/bin/sh\necho arm64\n' > "$Q/clang22/bin/llvm-lipo"
+run "$Q"
+[ "$rc" = 1 ] || fail "no x86_64 slice: exit $rc"
+has "$t/err" x86_64 "no x86_64 slice"
+
+# --- missing products
+Q="$t/mg-nosdk"; mkprefix "$Q"; rm -rf "$Q/sdk109/SDKs"
+run "$Q"
+[ "$rc" = 1 ] || fail "missing sdk109: exit $rc"
+has "$t/err" sdk109 "missing sdk109"; has "$t/err" "longboat sdk install 10.9" "missing sdk109"
+Q="$t/mg-noclang"; mkprefix "$Q"; rm -rf "$Q/clang22"
+run "$Q"
+[ "$rc" = 1 ] || fail "missing clang22: exit $rc"
+has "$t/err" clang22 "missing clang22"
+Q="$t/mg-norec"; mkprefix "$Q"; rm -rf "$Q/recaulk"
+run "$Q"
+[ "$rc" = 1 ] || fail "missing recaulk: exit $rc"
+has "$t/err" recaulk "missing recaulk"
+
+# --- Apple Silicon Mac: clang22-cross stands in for clang22, with a note
+mkdir "$t/bin"
+printf '#!/bin/sh\ncase "$1" in -s) echo Darwin;; -m) echo arm64;; *) echo Darwin;; esac\n' > "$t/bin/uname"; chmod +x "$t/bin/uname"
+A="$t/mg-arm"; mkprefix "$A" clang22-cross
+OLDPATH=$PATH; PATH="$t/bin:$PATH"
+run "$A"
+PATH=$OLDPATH
+[ "$rc" = 0 ] || fail "arm64 Darwin with clang22-cross: exit $rc: $(cat "$t/err")"
+has "$t/err" "interface-equal, not byte-equal" "arm64 note"
+"$(cat "$t/out")" -c x.c > "$t/c"
+has "$t/c" "^$A/clang22-cross/bin/clang -no-canonical-prefixes" "arm64 wrapper"
+# the same tree on a non-arm64 host is refused: clang22 is what's required there
+run "$A"
+[ "$rc" = 1 ] || fail "clang22-cross is not accepted off arm64 Darwin: exit $rc"
+echo "ok: c-toolchain"
