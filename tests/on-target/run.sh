@@ -6,7 +6,7 @@
 #              read from `go version`)
 #       Covers: go version; crypto/x509's keychain-union and fallback tests; the pure-Go link (default, CGO_ENABLED=0 and a go test
 #       binary all run); a cgo program that defines its own SecTrustEvaluateWithError; a cgo hello; both verifiers rejecting an
-#       untrusted chain. Nothing here skips: a missing prerequisite is a failure, so the suite never passes by examining less.
+#       untrusted chain; and no build prints a linker warning (tests/on-target/build-output.sh). Nothing here skips: a missing prerequisite is a failure, so the suite never passes by examining less.
 #       Exits 0 only when every check passed.
 set -eu
 fail=0
@@ -27,6 +27,7 @@ fi
 [ -x "$goroot/bin/go" ] || die "no go at $goroot/bin/go -- install the line's native pkg first; this suite does not skip"
 
 here="$(cd "$(dirname "$0")/.." && pwd)"
+. "$here/on-target/build-output.sh"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/on-target.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 unset HTTPS_PROXY HTTP_PROXY ALL_PROXY GODEBUG GO_EXTLINK_ENABLED GOOS GOARCH CGO_ENABLED
@@ -44,6 +45,7 @@ gomod="go 1.$minor"
 
 # spec: on-target suite, check 2 -- the keychain-union trust tests, run on the toolchain's own source (needs clang22: crypto/x509 links cgo-free, the test binary links through the wrapper)
 out="$(go test crypto/x509 -run 'KeychainUnion|Fallback' -count=1 -v 2>&1)" || { printf '%s\n' "$out" | tail -40; bad "go test crypto/x509 failed"; }
+ot_check_output "crypto/x509 tests" "$out"
 skipped="$(printf '%s\n' "$out" | grep -E '^[[:space:]]*--- SKIP: ' || true)"
 [ -z "$skipped" ] || bad "tests skipped on the target (they must run here): $skipped"
 passed="$(printf '%s\n' "$out" | grep -c '^--- PASS: Test[A-Za-z_]*KeychainUnion' || true)"
@@ -83,10 +85,10 @@ pure_check() { # binary label
     else bad "pure-go [$2]: runs but minos is '${m:-none}', want 10.9 (internal-linked?)"; fi
   else bad "pure-go [$2]: does not run: $out"; fi
 }
-( cd "$tmp/pure" && go build -o "$tmp/pure-default" . ) && pure_check "$tmp/pure-default" default || bad "pure-go [default]: build failed"
-( cd "$tmp/pure" && CGO_ENABLED=0 go build -o "$tmp/pure-nocgo" . ) && pure_check "$tmp/pure-nocgo" CGO_ENABLED=0 || bad "pure-go [CGO_ENABLED=0]: build failed"
-if ( cd "$tmp/pure" && go test -c -o "$tmp/pure.test" . ); then pure_check "$tmp/pure.test" "go test binary"; else bad "pure-go [go test binary]: build failed"; fi
-if ( cd "$tmp/pure" && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$tmp/pure-linux" . ); then
+ot_build "pure-go [default]" "$tmp/pure" go build -o "$tmp/pure-default" . && pure_check "$tmp/pure-default" default || bad "pure-go [default]: build failed"
+ot_build "pure-go [CGO_ENABLED=0]" "$tmp/pure" env CGO_ENABLED=0 go build -o "$tmp/pure-nocgo" . && pure_check "$tmp/pure-nocgo" CGO_ENABLED=0 || bad "pure-go [CGO_ENABLED=0]: build failed"
+if ot_build "pure-go [go test binary]" "$tmp/pure" go test -c -o "$tmp/pure.test" .; then pure_check "$tmp/pure.test" "go test binary"; else bad "pure-go [go test binary]: build failed"; fi
+if ot_build "pure-go [GOOS=linux]" "$tmp/pure" env GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$tmp/pure-linux" .; then
   # spec: on-target suite, check 3 -- an ELF header: 0x7f E L F (the cross-OS build still links internally)
   if [ "$(head -c 4 "$tmp/pure-linux" | od -An -c | tr -d ' ')" = '177ELF' ]; then echo "ok   pure-go [GOOS=linux]: internal-linked ELF"
   else bad "pure-go [GOOS=linux]: not an ELF binary"; fi
@@ -95,7 +97,7 @@ else bad "pure-go [GOOS=linux]: build failed"; fi
 # spec: on-target suite, check 4 -- cgo-own-polyfill: a cgo program that defines its own SecTrustEvaluateWithError must link, with the symbol defined once (its own)
 cp -R "$here/cgo-own-polyfill" "$tmp/polyfill"
 printf 'module cgoownpolyfill\n\n%s\n' "$gomod" > "$tmp/polyfill/go.mod"
-if ( cd "$tmp/polyfill" && CGO_ENABLED=1 go build -o "$tmp/polyfill.bin" . ); then
+if ot_build "cgo-own-polyfill" "$tmp/polyfill" env CGO_ENABLED=1 go build -o "$tmp/polyfill.bin" .; then
   n="$("$clang22/bin/llvm-nm" -m "$tmp/polyfill.bin" | grep -cE '\(__TEXT,__text\) (non-)?external _SecTrustEvaluateWithError$' || true)"
   if [ "$n" = 1 ]; then
     if out="$("$tmp/polyfill.bin" 2>&1)"; then echo "ok   cgo-own-polyfill: _SecTrustEvaluateWithError defined once; runs: $out"
@@ -106,13 +108,15 @@ else bad "cgo-own-polyfill: a cgo program that defines its own SecTrustEvaluateW
 # spec: on-target suite, check 5 -- a plain cgo program builds and runs with no CGO_*/CC in the environment: go.env bakes them in
 cp -R "$here/hello-cgo" "$tmp/hello"
 printf 'module hellocgo\n\n%s\n' "$gomod" > "$tmp/hello/go.mod"
-if out="$( cd "$tmp/hello" && go build -o "$tmp/hello.bin" . && "$tmp/hello.bin" 2>&1 )"; then echo "ok   hello-cgo: $out"
-else bad "hello-cgo: $out"; fi
+if ot_build "hello-cgo" "$tmp/hello" go build -o "$tmp/hello.bin" .; then
+  if out="$("$tmp/hello.bin" 2>&1)"; then echo "ok   hello-cgo: $out"
+  else bad "hello-cgo: does not run: $out"; fi
+else bad "hello-cgo: build failed"; fi
 
 # spec: on-target suite, check 6 -- native-verifier-untrusted: a chain to an unknown CA is rejected by the union and by Apple's verifier alike
 cp -R "$here/trust/untrusted" "$tmp/untrusted"
 printf 'module untrusted\n\n%s\n' "$gomod" > "$tmp/untrusted/go.mod"
-if ( cd "$tmp/untrusted" && go build -o "$tmp/untrusted.bin" . ); then
+if ot_build "untrusted" "$tmp/untrusted" go build -o "$tmp/untrusted.bin" .; then
   want='REJECTED x509.UnknownAuthorityError'
   for mode in default native; do
     if [ "$mode" = native ]; then out="$(GODEBUG=x509usefallbackroots=0 "$tmp/untrusted.bin" 2>&1)" || true
