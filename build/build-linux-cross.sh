@@ -14,18 +14,17 @@ sh "$PORT_DIR/build/build-builder.sh"
 . "$PORT_DIR/build/toolchain-lib.sh"
 RECAULK_LIB="$(tl_cc_var recaulk)"
 root="go$GO_LINE-cross"
-
-# spec: PORT.md, the build chain -- the archive holds the linux/amd64 toolchain. On a Linux x86_64 host the builder IS that, and is
-#       staged as it is. Anywhere else, cmd is cross-built for linux/amd64 from the host's builder (cgo off: Go internal-links it, and
-#       -trimpath keeps this host's paths out), so a 10.9 or Apple Silicon developer produces the same bytes. tl_stage takes only the
-#       toolchain, never a host binary.
+# spec: PORT.md, the build chain -- the archive holds the linux/amd64 toolchain, rebuilt from the builder the same way on EVERY host
+#       (cgo off: Go internal-links it, and -trimpath keeps the build host's paths out), so a Linux CI box, a 10.9 Mac and an Apple
+#       Silicon one produce the same bytes. make.bash's own linux/amd64 binaries are not staged: they carry another build
+#       configuration (101 MB with DWARF against 70 MB here). On a Linux x86_64 host this install replaces the builder's own bin/
+#       and pkg/tool in place (same Go version, so later builds are unaffected), as build-native.sh does on 10.9; elsewhere it
+#       writes bin/linux_amd64 and pkg/tool/linux_amd64. tl_stage takes only the toolchain, never a host binary.
 tl_go_env
-if [ "$("$WORK/go/bin/go" env GOHOSTOS)_$("$WORK/go/bin/go" env GOHOSTARCH)" != linux_amd64 ]; then
-  GOOS=linux GOARCH=amd64 CGO_ENABLED=0
-  export GOOS GOARCH CGO_ENABLED
-  ( cd "$WORK/go/src" && "$WORK/go/bin/go" install -trimpath cmd )
-  unset GOOS GOARCH CGO_ENABLED
-fi
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0
+export GOOS GOARCH CGO_ENABLED
+( cd "$WORK/go/src" && "$WORK/go/bin/go" install -trimpath cmd )
+unset GOOS GOARCH CGO_ENABLED
 
 stage="$WORK/staging-linux"
 dest="$stage/$root"
@@ -60,7 +59,7 @@ sh "$SHIPYARD_SCRIPTS/build-info.sh" "$dest/build-info-linux-cross.txt" \
   variant=linux-cross host=linux-x86_64 root="$root" prefix="$CROSS_PREFIX" \
   go_version="$GO_VERSION" go_line="$GO_LINE" pkg_version="$PKG_VERSION" \
   recaulk_version="$RECAULK_VERSION" ca_sha256="$CA_SHA256" clang22_version="$CLANG22_VERSION" \
-  $(sed -n 's/^\(clang22\|recaulk\|sdk109\|sdk113\|pins\)=\(.*\)$/built_\1=\2/p' "$WORK/cc/versions")
+  $(sed -n 's/^\([a-z0-9]*\)=\(.*\)$/built_\1=\2/p' "$WORK/cc/versions")
 cp "$dest/build-info-linux-cross.txt" "$out/build-info-linux-cross.txt"
 
 # spec: PORT.md, the build chain -- reproducible: files sorted by name, owner 0:0 (numeric), every mtime SOURCE_DATE_EPOCH, gzip -n.
