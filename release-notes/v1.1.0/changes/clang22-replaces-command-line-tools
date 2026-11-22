@@ -1,0 +1,1 @@
+Go for Mavericks now needs the clang22 compiler package installed, in place of Apple's Command Line Tools, to build programs that use C code.

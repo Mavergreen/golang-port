@@ -20,6 +20,9 @@ esac
 
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
+# spec: PORT.md, the build chain -- the tarball carries the whole port: the overlay and the build chain a line runs (build/, CMakeLists.txt,
+#       updater/, resources/, tests/). tests/fixtures/line-* are copies of what a line holds, so they stay out. gzip -n and git archive's
+#       fixed mtimes keep it reproducible.
 git -C "$root" archive --format=tar --prefix="golang-port-$v/" HEAD \
-  LICENSE PORT.md apply-overlay.sh overlay | gzip -n > "$out/golang-port-$v.tar.gz"
+  LICENSE PORT.md apply-overlay.sh overlay build CMakeLists.txt updater resources tests ':(exclude)tests/fixtures/line-*' | gzip -n > "$out/golang-port-$v.tar.gz"
 echo "tarball.sh: $out/golang-port-$v.tar.gz"

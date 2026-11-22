@@ -193,6 +193,74 @@ never while invariants 3–6 hold.
 Overlay (testdata). The ISRG Root X1 chain the darwin tests verify against. *Reconsider:* as
 `root_keychainunion_darwin_test.go`.
 
+## Build chain
+
+The port holds the build chain the golang lines share: a line (golang-126, golang-127, ...) supplies only its inputs, and
+`build/` turns them into a toolchain, the same way on every host (a Mac, the 10.9 box, Linux CI). Each entry below is a rule
+the chain keeps because Go would otherwise bake the build host into the result. Rules are checked by `tests/`; a change to one
+goes in the same commit as its entry.
+
+### -trimpath on every toolchain binary
+Build rule. `build-native.sh` installs `cmd` with `go install -a -trimpath -ldflags=-linkmode=external`, and
+`build-cross.sh` and `build-linux-cross.sh` with `-trimpath`, so no binary carries the build host's checkout or cache paths. *Why:* without it two hosts
+building the same inputs produce different bytes, and Linux CI could not be a byte reference for the 10.9 box.
+`-linkmode=external` is the other half: Go internal-links pure-Go darwin binaries and stamps its own minimum-OS floor, so
+every binary must go through the C wrapper to get minos 10.9 and Recaulk. *Invariant:* the tree built on Linux and the tree
+built on 10.9 differ in no file (`tests/cross-host-bytes.sh`, shipyard's build-equivalence). *Reconsider:* if Go makes the
+paths it embeds reproducible without the flag, or `tests/cross-host-bytes.sh` stops being the gate.
+
+### Fixed C-toolchain paths
+Build rule. Go hashes the C compiler's absolute path into build IDs, so every host reaches the compiler, the SDK and Recaulk
+at the family's installed prefixes: `/usr/local/mavergreen/clang22`, `/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk`,
+`/usr/local/mavergreen/recaulk`, and the products' own `/usr/local/mavergreen/go1NN` and `go1NN-cross`. On Linux, install@v1
+`products:` puts each archive at its pkg's prefix. `build/c-toolchain.sh` checks each against the line's pin
+(`components/<name>/version`) and writes the build wrapper `$WORK/cc/bin/clang`; nothing falls back to a cache path.
+*Why:* a path that differs per host changes build IDs, hence bytes. *Invariant:* the paths are derived from the line
+(`/usr/local/mavergreen/go${GO_LINE}`), never spelled per line (`tests/prefix-check.sh`); the build is Rosetta-free
+(`tests/rosetta-free-guard.sh`); the cross toolchain ships no SDK fetcher (`tests/no-sdk-fetcher-test.sh`). *Reconsider:* if
+Go stops hashing compiler paths, or the family moves its prefix.
+
+### CC and CC_FOR_TARGET are unset during make.bash
+Build rule. `build-builder.sh` unsets `CC`, `CXX`, `CC_FOR_TARGET`, `CXX_FOR_TARGET`, the target and `CGO_*` before make.bash,
+and `tl_go_env` does the same before every `go install`; each variable it found set is named on stderr. The wrapper is found
+on `PATH` as `clang`, the same name on every host. *Why:* make.bash bakes `CC` into `zdefaultcc.go`, so a caller's compiler
+(Apple's clang on a Mac, gcc on Linux) would become the toolchain's default C compiler. *Invariant:* `go env CC` of a shipped
+toolchain is its own wrapper. *Reconsider:* if Go stops baking `CC` from the environment.
+
+### DWARF is kept: dsymutil and strip come from clang22
+Build rule. The darwin link runs `dsymutil` and `strip` (and `ar` for a c-archive) by asking the C compiler
+`--print-prog-name`. The wrappers answer those three from the clang22 prefix (`dsymutil`, `llvm-strip`, `llvm-ar`), never
+from the host's `PATH`; `c-toolchain.sh` refuses a clang22 without them. *Why:* the host's strip differs per host (Apple's on a
+Mac, GNU's on Linux, none on a minimal image), and a stripped binary loses the DWARF the shipped toolchain keeps for
+debugging. *Invariant:* every linked toolchain binary has a `__DWARF` segment and is byte-identical across hosts; `-a` relinks
+them all every build, because `dsymutil` and `strip` are not in Go's action IDs. *Reconsider:* when clang22 stops shipping the
+three tools, or the family decides the toolchain ships without DWARF.
+
+### Standing rules and known differences
+Rules the chain keeps and differences a reader will notice; none is a regression.
+
+- **Pins.** `build/c-toolchain.sh` is strict (version drift refuses) when `CI=true` or `MAVERGREEN_STRICT_PINS=1`, and lenient on
+  a dev box (drift warns once per product and the build goes on; `MAVERGREEN_STRICT_PINS=0` forces lenient even in CI). A missing
+  product always refuses. The versions actually used are recorded in build-info, so a lenient build says what it was built with.
+- **Apple Silicon is interface-equal, not byte-equal.** An Apple Silicon Mac builds with `clang22-cross`, at another prefix,
+  because `clang22`'s pkg is x86_64-only; the compiler path is hashed into build IDs (rule above), so those bytes differ. Linux
+  CI and the 10.9 box are the byte references. Exit: a `clang22` alias on Macs; revisit if anyone needs to byte-reproduce a
+  release on Apple Silicon.
+- **The builder key leaves out the bootstrap on purpose.** `$WORK/builder.key` covers the Go version, the patches, the overlay, the
+  clang22 version and `uname -sm`, not the bootstrap Go: make.bash rebuilds the toolchain in three stages, so its output does
+  not depend on the bootstrap. Do not add it back.
+- **The builder's `bin/` is overwritten by the product build:** `build-native.sh` on a darwin host, `build-linux-cross.sh` on a
+  Linux host, install the product's binaries over it (same Go version, so later builds are unaffected).
+- **The Linux archive** (`go1NN-cross-<version>-linux-x86_64.tar.gz`): its contents are identical whichever host built it, but its
+  `.tar.gz` bytes differ per host (the gzip implementation), so compare trees, not archives. Its `go.env` names `CC`
+  absolutely, at `/usr/local/mavergreen/go1NN-cross/bin/mavericks-cross-clang`: extract it elsewhere and set `CC`.
+- **Tests that need a built product skip (77) without one** (`cross-vet.sh`, `linux-cross-test.sh`, `updater-test.sh`,
+  `compat-guard.sh` without binaries). `tests/on-target/run.sh` is the other direction: it runs in the 10.9 guest against the
+  installed toolchain and never skips.
+
+*Reconsider:* each bullet when the rule it states stops holding; the byte-reference rule when the family has a `clang22` for
+Apple Silicon.
+
 ## Not carried here
 
 - The CA bundle itself (`vendor/cacert.pem`, curl.se's Mozilla export) is an ingredient, not a

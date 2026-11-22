@@ -14,6 +14,11 @@ done
 for f in $(sed -n 's|^### \(overlay/.*\)$|\1|p' "$M"); do
   [ -f "$R/$f" ] || { echo "FAIL: PORT.md explains $f, which is not in the overlay"; fail=1; }
 done
+# spec: PORT.md "Build chain" -- one entry per Phase 0 rule, plus the standing rules and known differences
+grep -q "^## Build chain\$" "$M" || { echo "FAIL: PORT.md has no '## Build chain' section"; fail=1; }
+for h in "-trimpath on every toolchain binary" "Fixed C-toolchain paths" "CC and CC_FOR_TARGET are unset during make.bash" "DWARF is kept: dsymutil and strip come from clang22" "Standing rules and known differences"; do
+  grep -qF "### $h" "$M" || { echo "FAIL: PORT.md's Build chain has no '### $h' entry"; fail=1; }
+done
 # spec: decision 4 -- every carried change in PORT.md has a Reconsider line
 awk '
   /^### / { if (name != "") report(); name = $0; has = 0; next }
