@@ -31,14 +31,14 @@ patch_sha="$( { ( cd "$LINE_ROOT" && LC_ALL=C find patches -type f -name '*.patc
   echo "host=$(uname -sm)"
 } > "$WORK/builder.key.new"
 
-if [ -f "$WORK/builder.key" ] && [ -x "$WORK/go/bin/go" ] && cmp -s "$WORK/builder.key" "$WORK/builder.key.new"; then
+if [ -f "$WORK/builder.key" ] && [ -x "$WORK/go/bin/go" ] && [ -f "$WORK/builder.tools" ] && cmp -s "$WORK/builder.key" "$WORK/builder.key.new"; then
   rm -f "$WORK/builder.key.new"
   echo "build-builder.sh: reusing the builder at $WORK/go (builder.key matches)" >&2
   exit 0
 fi
 
 # spec: PORT.md, the build chain -- anything short of a matching key and a built go starts again from a pristine tree; the key returns only after make.bash succeeds.
-rm -f "$WORK/builder.key"
+rm -f "$WORK/builder.key" "$WORK/builder.tools"
 sh "${BUILDER_FETCH_GO:-$PORT_DIR/build/fetch-go.sh}"
 sh "${BUILDER_APPLY_PATCHES:-$PORT_DIR/build/apply-patches.sh}"
 
@@ -67,5 +67,12 @@ export PATH="$CC_DIR:$PATH"
 export GOCACHE="$WORK/.gocache"
 ( cd "$WORK/go/src" && ./make.bash -v )
 [ -x "$WORK/go/bin/go" ] || { echo "build-builder.sh: make.bash left no $WORK/go/bin/go" >&2; exit 1; }
+# spec: PORT.md, the build chain -- the tools make.bash installed for the host are Go's own distribution list, the tools every product
+#       ships. Recorded now: on a darwin/amd64 host a product's `go install cmd` later adds every other tool in place.
+: > "$WORK/builder.tools"
+for d in "$WORK/go/pkg/tool"/*; do
+  [ -d "$d" ] || continue
+  ( cd "$d" && LC_ALL=C ls ) >> "$WORK/builder.tools"
+done
 mv "$WORK/builder.key.new" "$WORK/builder.key"
 echo "build-builder.sh: built $WORK/go (key: $(tr '\n' ' ' < "$WORK/builder.key"))" >&2

@@ -15,7 +15,8 @@ want_clang=22.1.8-mavericks.25
 P="$t/mg"
 mkdir -p "$P/clang22/bin" "$P/sdk109/SDKs/MacOSX10.9.sdk" "$P/recaulk/lib"
 printf '#!/bin/sh\necho "Non-fat file: $2 is architecture: x86_64"\n' > "$P/clang22/bin/llvm-lipo"
-chmod +x "$P/clang22/bin/llvm-lipo"
+printf '#!/bin/sh\n' > "$P/clang22/bin/llvm-strip"; printf '#!/bin/sh\n' > "$P/clang22/bin/dsymutil"
+chmod +x "$P/clang22/bin/llvm-lipo" "$P/clang22/bin/llvm-strip" "$P/clang22/bin/dsymutil"
 : > "$P/recaulk/lib/librecaulk.a"
 mkplist() { printf '<plist><dict>\n<key>version</key>\n<string>%s</string>\n</dict></plist>\n' "$2" > "$1/mavergreen.plist"; }
 fx0="$here/tests/fixtures/line-127"
@@ -33,6 +34,7 @@ env > "$FIXTURE_COUNT/env"
 echo "$*" > "$FIXTURE_COUNT/args"
 echo "$PWD" > "$FIXTURE_COUNT/cwd"
 mkdir -p ../bin; echo '#!/bin/sh' > ../bin/go; chmod +x ../bin/go
+mkdir -p ../pkg/tool/stub_os; : > ../pkg/tool/stub_os/vet; : > ../pkg/tool/stub_os/compile
 EOM
 chmod +x "$WORK/go/src/make.bash"
 EOS
@@ -70,6 +72,8 @@ has "$t/work/builder.key" '^go=1\.27\.' "key: go version"
 has "$t/work/builder.key" "^clang22=$want_clang\$" "key: clang22 version"
 has "$t/work/builder.key" "^host=$(uname -sm)\$" "key: uname -sm"
 has "$t/work/builder.key" '^patches=[0-9a-f]\{64\}$' "key: patch set sha256"
+[ "$(cat "$t/work/builder.tools")" = "compile
+vet" ] || fail "builder.tools: $(cat "$t/work/builder.tools")"
 
 # spec: build/build-builder.sh -- same inputs: reused, make.bash not called, and it says so
 run "$t/line"
@@ -77,12 +81,19 @@ run "$t/line"
 [ "$(count makes)" = 1 ] || fail "same key: make.bash ran again"
 has "$t/err" 'reusing' "stderr says the builder is reused"
 
+# spec: build/build-builder.sh -- a builder without its recorded tool list is rebuilt
+rm "$t/work/builder.tools"
+run "$t/line"
+[ "$rc" = 0 ] || fail "no builder.tools: exit $rc: $(cat "$t/err")"
+[ "$(count makes)" = 2 ] || fail "no builder.tools did not rebuild (makes=$(count makes))"
+[ -f "$t/work/builder.tools" ] || fail "rebuild left no builder.tools"
+
 # spec: build/build-builder.sh -- one changed patch byte rebuilds, from a fresh fetch
 printf '\n' >> "$t/line/patches/0016-root-hook.patch"
 run "$t/line"
 [ "$rc" = 0 ] || fail "changed patch: exit $rc: $(cat "$t/err")"
-[ "$(count makes)" = 2 ] || fail "changed patch byte did not rebuild (makes=$(count makes))"
-[ "$(count fetches)" = 2 ] || fail "rebuild did not start from a fresh fetch"
+[ "$(count makes)" = 3 ] || fail "changed patch byte did not rebuild (makes=$(count makes))"
+[ "$(count fetches)" = 3 ] || fail "rebuild did not start from a fresh fetch"
 
 # spec: build/build-builder.sh -- a make.bash that fails leaves no key, so the half-built tree is never reused
 cat > "$t/fetchfail" <<'EOS'

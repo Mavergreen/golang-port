@@ -72,25 +72,24 @@ case " $_archs " in
   *) refuse "$RECAULK_LIB has no x86_64 slice (has: $_archs); reinstall recaulk $RECAULK_VERSION" ;;
 esac
 
-# spec: PORT.md, the build chain -- the wrapper: every call targets x86_64 10.9 against the 10.9 SDK; link steps (no -c/-E/-S) also use
-#       lld and Recaulk, and leave the one symbol the 10.9 libSystem lacks to the runtime.
+# spec: PORT.md, the build chain -- the build wrapper adds the same flags as the shipped ones (build/cc-wrapper.sh), at the paths checked above.
+# spec: PORT.md, the build chain -- Go's darwin external link runs dsymutil and `strip -S`, found with `clang --print-prog-name`, which
+#       looks in clang22's bin, then PATH. clang22's 10.9 pkg names llvm-strip but no `strip`, so on 10.9 that found Apple's
+#       /usr/bin/strip, whose string table differs from llvm-strip's: every linked binary differed from a Linux build. Both tools
+#       must come from the clang22 prefix, never the host.
+for _tool in dsymutil llvm-strip; do
+  [ -x "$CLANG_PREFIX/bin/$_tool" ] || refuse "$CLANG_DIR at $CLANG_PREFIX has no bin/$_tool, which Go's darwin link needs (a host's own would change the bytes). Install a $CLANG_DIR that ships it"
+done
 CC_DIR="$WORK/cc/bin"
 mkdir -p "$CC_DIR" || exit 1
-{
-  echo '#!/bin/sh'
-  echo "# spec: c-toolchain.sh generates this wrapper; do not edit"
-  echo 'link=yes'
-  echo 'for a in "$@"; do'
-  echo '  case "$a" in -c|-E|-S) link=no ;; esac'
-  echo 'done'
-  printf 'base="-no-canonical-prefixes --no-default-config --target=x86_64-apple-macos%s -isysroot %s -mmacosx-version-min=%s"\n' "$MACOS_MIN" "$SDK109" "$MACOS_MIN"
-  wlu=""; for s in $WLU_SYMS; do wlu="$wlu -Wl,-U,$s"; done
-  echo 'if [ "$link" = yes ]; then'
-  printf '  exec %s/bin/clang $base -fuse-ld=lld --ld-path=%s/bin/ld64.lld "$@" %s%s\n' "$CLANG_PREFIX" "$CLANG_PREFIX" "$RECAULK_LIB" "$wlu"
-  echo 'fi'
-  printf 'exec %s/bin/clang $base "$@"\n' "$CLANG_PREFIX"
-} > "$CC_DIR/clang"
-chmod +x "$CC_DIR/clang"
+rm -f "$CC_DIR/strip"
+ln -s "$CLANG_PREFIX/bin/llvm-strip" "$CC_DIR/strip" || exit 1
+. "$PORT_DIR/build/cc-wrapper.sh"
+cc_wrapper "$CC_DIR/clang" "cc_prefix='$CLANG_PREFIX'
+sdk='$SDK109'
+recaulk='$RECAULK_LIB'
+no_clang='$CLANG_DIR is gone from $CLANG_PREFIX; run build/c-toolchain.sh again'
+no_sdk='sdk109 is gone from $SDK109; run build/c-toolchain.sh again'" || exit 1
 # spec: PORT.md, the build chain -- the versions actually used, for build-info (Task 7 copies this file)
 sdkv() { _v="$(plist_version "$1")"; printf %s "${_v:-unknown}"; }
 {
