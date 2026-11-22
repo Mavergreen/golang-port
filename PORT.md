@@ -212,8 +212,8 @@ paths it embeds reproducible without the flag, or `tests/cross-host-bytes.sh` st
 ### Fixed C-toolchain paths
 Build rule. Go hashes the C compiler's absolute path into build IDs, so every host reaches the compiler, the SDK and Recaulk
 at the family's installed prefixes: `/usr/local/mavergreen/clang22`, `/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk`,
-`/usr/local/mavergreen/recaulk`, and the products' own `/usr/local/mavergreen/go1NN` and `go1NN-cross`. On Linux, install@v1
-`products:` puts each archive at its pkg's prefix. `build/c-toolchain.sh` checks each against the line's pin
+`/usr/local/mavergreen/recaulk`, and the products' own `/usr/local/mavergreen/go1NN` and `go1NN-cross`. On Linux,
+`build/provision-linux.sh` puts each at its pkg's prefix until install@v1 `products:` can (below). `build/c-toolchain.sh` checks each against the line's pin
 (`components/<name>/version`) and writes the build wrapper `$WORK/cc/bin/clang`; nothing falls back to a cache path.
 *Why:* a path that differs per host changes build IDs, hence bytes. *Invariant:* the paths are derived from the line
 (`/usr/local/mavergreen/go${GO_LINE}`), never spelled per line (`tests/prefix-check.sh`); the build is Rosetta-free
@@ -256,6 +256,16 @@ Rules the chain keeps and differences a reader will notice; none is a regression
 - **The Linux archive** (`go1NN-cross-<version>-linux-x86_64.tar.gz`): its contents are identical whichever host built it, but its
   `.tar.gz` bytes differ per host (the gzip implementation), so compare trees, not archives. Its `go.env` names `CC`
   absolutely, at `/usr/local/mavergreen/go1NN-cross/bin/mavericks-cross-clang`: extract it elsewhere and set `CC`.
+- **Linux provisions with `build/provision-linux.sh`, for now.** install@v1 `products:` installs with macOS's `installer`, so on
+  Linux `sudo -E sh build/provision-linux.sh [--root DIR] clang22@<version> sdk109 recaulk@<version>` (pins from the line's
+  `components/*/version`) puts each product at its pkg's prefix with the `mavergreen.plist` that pkg installs: clang22 from its
+  linux-x86_64 archive and the plist from its release pkg, the pinned SDK with the plist rendered as Longboat renders it, and
+  Recaulk's pkg component. A product already at its version is kept; Darwin refuses. It is a declared deviation in
+  INGREDIENTS.md. Exit: shipyard's queue entry "install@v1 `products:` learns Linux assets"; then the script is deleted.
+- **On-target builds link without warnings.** `tests/on-target/run.sh` fails any check whose build output, stderr included,
+  holds `newer than target minimum` or any `ld64.lld: warning:`, naming the line (`tests/on-target/build-output.sh`,
+  proven by `tests/on-target-output-test.sh`). The lines' patch 0019 removes the `go.o has version 13.0.0` warning every
+  external link used to print.
 - **Tests that need a built product skip (77) without one** (`cross-vet.sh`, `linux-cross-test.sh`, `updater-test.sh`,
   `compat-guard.sh` without binaries). `tests/on-target/run.sh` is the other direction: it runs in the 10.9 guest against the
   installed toolchain and never skips.
