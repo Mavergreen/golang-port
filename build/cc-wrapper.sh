@@ -6,6 +6,10 @@
 #       sdk (a MacOSX10.9.sdk), recaulk (a librecaulk.a), and no_clang / no_sdk: what to print when that compiler or SDK is absent.
 # spec: PORT.md, the build chain -- every call targets x86_64 10.9 against the 10.9 SDK; link steps (no -c/-E/-S) also use lld and
 #       Recaulk, and leave the one symbol the 10.9 libSystem lacks to the runtime.
+# spec: PORT.md, the build chain -- Go's darwin external link asks `$CC <flags> --print-prog-name strip` (then runs `strip -S`), the
+#       same for dsymutil, and for ar when it builds a c-archive, the flag and the name as two arguments. clang answers from its own
+#       bin, then PATH, and clang22's 10.9 pkg names llvm-strip but no `strip`: Apple's /usr/bin/strip changed every binary's bytes,
+#       and without the CLT, or with GNU strip on Linux, the link fails. So the wrapper answers these three from the clang22 prefix.
 cc_wrapper() {
   _cw_wlu=""
   for _cw_s in $WLU_SYMS; do _cw_wlu="$_cw_wlu -Wl,-U,$_cw_s"; done
@@ -15,9 +19,18 @@ cc_wrapper() {
     printf '%s\n' "$2"
     echo '[ -x "$cc_prefix/bin/clang" ] || { echo "${0##*/}: $no_clang" >&2; exit 1; }'
     echo '[ -d "$sdk" ] || { echo "${0##*/}: $no_sdk" >&2; exit 1; }'
-    echo 'link=yes'
+    echo 'link=yes prev='
     echo 'for a in "$@"; do'
     echo '  case "$a" in -c|-E|-S) link=no ;; esac'
+    echo '  tool='
+    echo '  case "$prev" in --print-prog-name|-print-prog-name) tool=$a ;; esac'
+    echo '  case "$a" in --print-prog-name=*|-print-prog-name=*) tool=${a#*=} ;; esac'
+    echo '  case "$tool" in'
+    echo '    strip) echo "$cc_prefix/bin/llvm-strip"; exit 0 ;;'
+    echo '    dsymutil) echo "$cc_prefix/bin/dsymutil"; exit 0 ;;'
+    echo '    ar) echo "$cc_prefix/bin/llvm-ar"; exit 0 ;;'
+    echo '  esac'
+    echo '  prev=$a'
     echo 'done'
     printf 'base="-no-canonical-prefixes --no-default-config --target=x86_64-apple-macos%s -isysroot $sdk -mmacosx-version-min=%s"\n' "$MACOS_MIN" "$MACOS_MIN"
     echo 'if [ "$link" = yes ]; then'

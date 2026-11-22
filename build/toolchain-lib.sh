@@ -1,15 +1,16 @@
 #!/bin/sh
 # platform: host-agnostic
 # spec: PORT.md, the build chain -- build/toolchain-lib.sh: what build-native.sh and build-cross.sh share. Sourced after env.sh and
-#       build-builder.sh, so $WORK/go is the builder, $WORK/builder.tools its tool list and $WORK/cc/bin/clang the build wrapper.
+#       build-builder.sh, so $WORK/go is the builder, $WORK/builder.tools its tool list and $WORK/cc/vars the build wrapper's paths.
 
 tl_die() { echo "${TL_NAME:-toolchain-lib.sh}: $*" >&2; exit 1; }
 
-# spec: PORT.md, the build chain -- tl_wrapper_var NAME: a path the build wrapper was generated with (cc_prefix, sdk, recaulk), so the
-#       products ship the same Recaulk the build linked and read Mach-O with the clang22 that build used.
-tl_wrapper_var() {
-  _tw="$(sed -n "s/^$1='\(.*\)'\$/\1/p" "$WORK/cc/bin/clang" | sed -n 1p)"
-  [ -n "$_tw" ] || tl_die "no $1 in $WORK/cc/bin/clang; run build/c-toolchain.sh"
+# spec: PORT.md, the build chain -- tl_cc_var NAME: a path the build wrapper was written with (cc_prefix, sdk, recaulk), from
+#       c-toolchain.sh's $WORK/cc/vars, so the products ship the Recaulk the build linked and read Mach-O with the clang22 it used.
+tl_cc_var() {
+  [ -f "$WORK/cc/vars" ] || tl_die "no $WORK/cc/vars; run build/c-toolchain.sh"
+  _tw="$( . "$WORK/cc/vars" && eval "printf %s \"\${$1:-}\"")"
+  [ -n "$_tw" ] || tl_die "no $1 in $WORK/cc/vars; run build/c-toolchain.sh"
   printf '%s' "$_tw"
 }
 
@@ -27,7 +28,8 @@ tl_go_env() {
   export GOROOT GOCACHE GOENV GOTOOLCHAIN GOPROXY PATH
 }
 
-# spec: PORT.md, the build chain -- tl_stage GOOS GOARCH DEST: the shipped GOROOT, built from the builder without changing it. Every
+# spec: PORT.md, the build chain -- tl_stage GOOS GOARCH DEST: the shipped GOROOT, copied out of $WORK/go; staging itself changes
+#       nothing there (on a darwin/amd64 host the native `go install` before it has already replaced the builder's own binaries). Every
 #       top-level file and the patched source (std ships as source); pkg/include; bin/go and bin/gofmt for the target; and in
 #       pkg/tool only the builder's own tools. No host binary is copied: a cross-built target's binaries come from bin/<os>_<arch>
 #       (where `go install` puts them), and only a host that IS the target takes bin/ itself.
@@ -61,7 +63,7 @@ tl_stage() {
 #       "<file> <arch> minos <m> sdk <s>" per file on stderr.
 tl_macho() {
   _tm_arch=$1 _tm_min=$2 _tm_sdk=$3; shift 3
-  _tm_cl="$(tl_wrapper_var cc_prefix)"
+  _tm_cl="$(tl_cc_var cc_prefix)"
   [ -x "$_tm_cl/bin/llvm-otool" ] && [ -x "$_tm_cl/bin/llvm-lipo" ] || tl_die "no llvm-otool/llvm-lipo in $_tm_cl/bin"
   for _tm_f in "$@"; do
     _tm_a="$("$_tm_cl/bin/llvm-lipo" -info "$_tm_f" 2>/dev/null | sed -n 's/^Non-fat file: .* is architecture: \([^ ]*\).*$/\1/p')"

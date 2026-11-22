@@ -11,7 +11,7 @@ export PORT_DIR
 TL_NAME=build-cross.sh
 sh "$PORT_DIR/build/build-builder.sh"
 . "$PORT_DIR/build/toolchain-lib.sh"
-RECAULK_LIB="$(tl_wrapper_var recaulk)"
+RECAULK_LIB="$(tl_cc_var recaulk)"
 
 # spec: PORT.md, the build chain -- the arm64 tools need no Darwin linker: with cgo off, Go internal-links them (Phase 0 spike 3), and
 #       they record Go's own minos and sdk. -trimpath keeps the build host's paths out. The darwin/amd64 programs they emit

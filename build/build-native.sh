@@ -12,7 +12,7 @@ sh "$PORT_DIR/build/build-builder.sh"
 . "$PORT_DIR/build/toolchain-lib.sh"
 CA="$(sh "$PORT_DIR/build/fetch-ca.sh" | tail -1)"
 [ -f "$CA" ] || tl_die "fetch-ca.sh produced no CA bundle ($CA)"
-RECAULK_LIB="$(tl_wrapper_var recaulk)"
+RECAULK_LIB="$(tl_cc_var recaulk)"
 
 # spec: PORT.md, the build chain -- the toolchain's own binaries. -trimpath keeps the build host's paths out of them; CC=clang finds the
 #       build wrapper on PATH, the same name on every host. -linkmode=external is required: Go internal-links pure-Go binaries on
@@ -47,7 +47,7 @@ for f in "$dest"/bin/* "$dest"/pkg/tool/darwin_amd64/*; do
   [ "$f" = "$dest/bin/mavericks-clang" ] || set -- "$@" "$f"
 done
 tl_macho x86_64 "$MACOS_MIN" "$MACOS_MIN" "$@"
-_cl="$(tl_wrapper_var cc_prefix)"
+_cl="$(tl_cc_var cc_prefix)"
 case " $("$_cl/bin/llvm-lipo" -info "$dest/lib/librecaulk.a" 2>/dev/null | sed -n 's/.*: //p') " in
   *" x86_64 "*) ;;
   *) tl_die "$dest/lib/librecaulk.a has no x86_64 slice" ;;

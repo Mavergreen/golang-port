@@ -36,10 +36,12 @@ no_clang='clang22-cross is not installed (no $MG/clang22-cross/bin/clang). Insta
 $mac_sdk" ;;
   linux)
     # spec: PORT.md, the build chain -- the linux archive can be extracted anywhere, so its Recaulk is found beside the wrapper, and
-    #       clang22 may live outside the family prefix (MAVERGREEN_CLANG22).
+    #       clang22 may live outside the family prefix (MAVERGREEN_CLANG22). Its own directory comes from $0 by expansion, not
+    #       dirname, which a minimal PATH (/bin on 10.9) lacks.
     cc_wrapper "$dir/bin/mavericks-cross-clang" "cc_prefix=\"\${MAVERGREEN_CLANG22:-$MG/clang22}\"
 sdk='$SDK'
-recaulk=\"\$(cd \"\$(dirname \"\$0\")/..\" && pwd)/lib/librecaulk.a\"
+case \"\$0\" in */*) here=\"\${0%/*}\" ;; *) here=. ;; esac
+recaulk=\"\$(cd \"\$here/..\" && pwd)/lib/librecaulk.a\"
 no_clang=\"clang22 is not installed (no \$cc_prefix/bin/clang). Install it: install@v1 products: clang22@$CLANG22_VERSION (it lands at /usr/local/mavergreen/clang22), or set MAVERGREEN_CLANG22 to a clang22 directory\"
 no_sdk='sdk109 is not installed (no $SDK). Install it: install@v1 products: sdk109'" ;;
 esac

@@ -73,23 +73,23 @@ case " $_archs " in
 esac
 
 # spec: PORT.md, the build chain -- the build wrapper adds the same flags as the shipped ones (build/cc-wrapper.sh), at the paths checked above.
-# spec: PORT.md, the build chain -- Go's darwin external link runs dsymutil and `strip -S`, found with `clang --print-prog-name`, which
-#       looks in clang22's bin, then PATH. clang22's 10.9 pkg names llvm-strip but no `strip`, so on 10.9 that found Apple's
-#       /usr/bin/strip, whose string table differs from llvm-strip's: every linked binary differed from a Linux build. Both tools
-#       must come from the clang22 prefix, never the host.
-for _tool in dsymutil llvm-strip; do
+# spec: PORT.md, the build chain -- the wrapper answers Go's --print-prog-name for strip, dsymutil and ar from the clang22 prefix
+#       (build/cc-wrapper.sh), so those tools must be there: a prefix without one refuses rather than build with other bytes.
+for _tool in dsymutil llvm-strip llvm-ar; do
   [ -x "$CLANG_PREFIX/bin/$_tool" ] || refuse "$CLANG_DIR at $CLANG_PREFIX has no bin/$_tool, which Go's darwin link needs (a host's own would change the bytes). Install a $CLANG_DIR that ships it"
 done
 CC_DIR="$WORK/cc/bin"
 mkdir -p "$CC_DIR" || exit 1
+# spec: PORT.md, the build chain -- an earlier version left a strip link here; the wrapper's answer is now the only mechanism.
 rm -f "$CC_DIR/strip"
-ln -s "$CLANG_PREFIX/bin/llvm-strip" "$CC_DIR/strip" || exit 1
 . "$PORT_DIR/build/cc-wrapper.sh"
 cc_wrapper "$CC_DIR/clang" "cc_prefix='$CLANG_PREFIX'
 sdk='$SDK109'
 recaulk='$RECAULK_LIB'
 no_clang='$CLANG_DIR is gone from $CLANG_PREFIX; run build/c-toolchain.sh again'
 no_sdk='sdk109 is gone from $SDK109; run build/c-toolchain.sh again'" || exit 1
+# spec: PORT.md, the build chain -- the paths the wrapper was written with, for the build scripts to source (build/toolchain-lib.sh)
+printf "cc_prefix='%s'\nsdk='%s'\nrecaulk='%s'\n" "$CLANG_PREFIX" "$SDK109" "$RECAULK_LIB" > "$WORK/cc/vars"
 # spec: PORT.md, the build chain -- the versions actually used, for build-info (Task 7 copies this file)
 sdkv() { _v="$(plist_version "$1")"; printf %s "${_v:-unknown}"; }
 {

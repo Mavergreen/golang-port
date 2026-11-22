@@ -33,8 +33,8 @@ mkprefix() {
   mkdir -p "$p/$c/bin" "$p/sdk109/SDKs/MacOSX10.9.sdk" "$p/recaulk/lib"
   printf '#!/bin/sh\necho "$0 $*"\n' > "$p/$c/bin/clang"
   printf '#!/bin/sh\necho "Non-fat file: $2 is architecture: x86_64"\n' > "$p/$c/bin/llvm-lipo"
-  printf '#!/bin/sh\n' > "$p/$c/bin/llvm-strip"; printf '#!/bin/sh\n' > "$p/$c/bin/dsymutil"
-  chmod +x "$p/$c/bin/clang" "$p/$c/bin/llvm-lipo" "$p/$c/bin/llvm-strip" "$p/$c/bin/dsymutil"
+  for x in llvm-strip dsymutil llvm-ar; do printf '#!/bin/sh\n' > "$p/$c/bin/$x"; chmod +x "$p/$c/bin/$x"; done
+  chmod +x "$p/$c/bin/clang" "$p/$c/bin/llvm-lipo"
   : > "$p/recaulk/lib/librecaulk.a"
   mkplist "$p/$c" "$want_clang"; mkplist "$p/sdk109" 20261012.2; mkplist "$p/recaulk" "$want_recaulk"
 }
@@ -69,12 +69,17 @@ has "$t/l" "--ld-path=$P/clang22/bin/ld64.lld" "link call"
 has "$t/l" "$P/recaulk/lib/librecaulk.a" "link call"
 has "$t/l" -Wl,-U,_xpc_date_create_from_current "link call"
 has "$t/l" "-isysroot $P/sdk109/SDKs/MacOSX10.9.sdk" "link call"
-# spec: build/c-toolchain.sh -- Go's darwin link finds strip through `clang --print-prog-name`, which falls back to PATH; the wrapper's
-#       directory (first on PATH) names clang22's llvm-strip, so no host strip (Apple's on 10.9, GNU's on Linux) is ever used
-[ -L "$t/work/cc/bin/strip" ] || fail "no strip link beside the wrapper"
-[ "$(ls -l "$t/work/cc/bin/strip" | sed 's/.* -> //')" = "$P/clang22/bin/llvm-strip" ] || fail "strip: $(ls -l "$t/work/cc/bin/strip")"
-# spec: build/c-toolchain.sh -- a clang22 prefix without dsymutil or llvm-strip refuses, naming the tool, instead of falling back to the host's
-for tool in dsymutil llvm-strip; do
+# spec: build/c-toolchain.sh -- Go's darwin link asks the wrapper for strip, dsymutil and ar (--print-prog-name); it answers from clang22, so no
+#       host tool (Apple's strip on 10.9, GNU's on Linux) is ever used, and nothing beside the wrapper stands in for one
+for x in strip:llvm-strip dsymutil:dsymutil ar:llvm-ar; do
+  got=$("$cc" -arch x86_64 --print-prog-name "${x%%:*}")
+  [ "$got" = "$P/clang22/bin/${x#*:}" ] || fail "build wrapper --print-prog-name ${x%%:*}: got $got"
+done
+[ ! -e "$t/work/cc/bin/strip" ] || fail "a strip beside the wrapper: one mechanism, the wrapper's answer"
+# spec: build/c-toolchain.sh -- $WORK/cc/vars: the paths the wrapper was written with, for the build scripts to source
+[ "$( . "$t/work/cc/vars"; printf '%s|%s|%s' "$cc_prefix" "$sdk" "$recaulk")" = "$P/clang22|$P/sdk109/SDKs/MacOSX10.9.sdk|$P/recaulk/lib/librecaulk.a" ] || fail "vars: $(cat "$t/work/cc/vars")"
+# spec: build/c-toolchain.sh -- a clang22 prefix without dsymutil, llvm-strip or llvm-ar refuses, naming the tool, instead of leaving Go to find the host's
+for tool in dsymutil llvm-strip llvm-ar; do
   Q="$t/mg-no-$tool"; mkprefix "$Q"; rm "$Q/clang22/bin/$tool"
   run "$Q"
   [ "$rc" = 1 ] || fail "clang22 without $tool: exit $rc"

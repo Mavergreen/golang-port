@@ -43,6 +43,21 @@ check() {
   has "$t/l" "-fuse-ld=lld --ld-path=$P/$c/bin/ld64.lld" "$k link"
   has "$t/l" " $r " "$k link"
   has "$t/l" "-Wl,-U,_xpc_date_create_from_current" "$k link"
+  progs "$k" "$w" "$P/$c"
+}
+
+# spec: build/cc-wrapper.sh -- progs <kind> <wrapper> <clang prefix>: Go's darwin link asks `$CC <flags> --print-prog-name strip` (and dsymutil,
+#       and ar for c-archive), the flag and the name as two arguments; every spelling is answered from the clang22 prefix, never the host
+progs() {
+  for tool in strip:llvm-strip dsymutil:dsymutil ar:llvm-ar; do
+    n=${tool%%:*} want="$3/bin/${tool#*:}"
+    for form in "--print-prog-name $n" "--print-prog-name=$n" "-print-prog-name=$n" "-print-prog-name $n"; do
+      got=$("$2" -arch x86_64 $form) || fail "$1 $form: exit $?"
+      [ "$got" = "$want" ] || fail "$1 $form: got '$got', want '$want'"
+    done
+  done
+  got=$("$2" --print-prog-name ld) || fail "$1 --print-prog-name ld: exit $?"
+  case "$got" in *"--print-prog-name ld"*) ;; *) fail "$1: other prog names are clang's to answer, got '$got'" ;; esac
 }
 
 # spec: build/write-wrappers.sh -- missing <kind> <name> <product> <hint> <env...>: with that product's clang absent, the wrapper exits 1 naming it and how to install it
@@ -71,6 +86,10 @@ check linux mavericks-cross-clang clang22 "$t/linux/lib/librecaulk.a"
 mv "$t/linux" "$t/elsewhere"; mkdir -p "$t/linux"
 "$t/elsewhere/bin/mavericks-cross-clang" x.o -o x > "$t/l"
 has "$t/l" " $t/elsewhere/lib/librecaulk.a " "relocated linux archive"
+# spec: build/write-wrappers.sh -- the linux wrapper needs no dirname: with PATH=/bin (10.9 keeps dirname in /usr/bin) it still finds its Recaulk
+PATH=/bin "$t/elsewhere/bin/mavericks-cross-clang" x.o -o x > "$t/l" 2> "$t/e" || fail "linux wrapper with PATH=/bin: $(cat "$t/e")"
+[ ! -s "$t/e" ] || fail "linux wrapper with PATH=/bin: $(cat "$t/e")"
+has "$t/l" " $t/elsewhere/lib/librecaulk.a " "linux wrapper with PATH=/bin"
 mkdir -p "$t/other/bin"; printf '#!/bin/sh\necho "OTHER $*"\n' > "$t/other/bin/clang"; chmod +x "$t/other/bin/clang"
 MAVERGREEN_CLANG22="$t/other" "$t/elsewhere/bin/mavericks-cross-clang" -c x.c > "$t/c"
 has "$t/c" "^OTHER " "MAVERGREEN_CLANG22"

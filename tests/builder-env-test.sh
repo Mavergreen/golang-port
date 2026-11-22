@@ -15,8 +15,8 @@ want_clang=22.1.8-mavericks.25
 P="$t/mg"
 mkdir -p "$P/clang22/bin" "$P/sdk109/SDKs/MacOSX10.9.sdk" "$P/recaulk/lib"
 printf '#!/bin/sh\necho "Non-fat file: $2 is architecture: x86_64"\n' > "$P/clang22/bin/llvm-lipo"
-printf '#!/bin/sh\n' > "$P/clang22/bin/llvm-strip"; printf '#!/bin/sh\n' > "$P/clang22/bin/dsymutil"
-chmod +x "$P/clang22/bin/llvm-lipo" "$P/clang22/bin/llvm-strip" "$P/clang22/bin/dsymutil"
+for x in llvm-strip dsymutil llvm-ar; do printf "#!/bin/sh\n" > "$P/clang22/bin/$x"; done
+chmod +x "$P/clang22/bin/llvm-lipo" "$P/clang22/bin/llvm-strip" "$P/clang22/bin/dsymutil" "$P/clang22/bin/llvm-ar"
 : > "$P/recaulk/lib/librecaulk.a"
 mkplist() { printf '<plist><dict>\n<key>version</key>\n<string>%s</string>\n</dict></plist>\n' "$2" > "$1/mavergreen.plist"; }
 fx0="$here/tests/fixtures/line-127"
