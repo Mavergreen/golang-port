@@ -3,7 +3,7 @@
 # spec: PORT.md, the build chain -- build/c-toolchain.sh: checks the installed products against the line's pins and prints the path of the
 #       build-time CC wrapper (<WORK>/cc/bin/clang). usage: LINE_ROOT=<line checkout> sh build/c-toolchain.sh
 #       Go hashes the C compiler's absolute paths into build IDs, so the products are at the family's installed prefixes
-#       on every host (on Linux, install@v1 `products:` puts each archive at its macOS pkg's prefix) and the script
+#       on every host (on Linux, build/provision-linux.sh puts each at its macOS pkg's prefix until install@v1 `products:` can) and the script
 #       never falls back to a cache path. MAVERGREEN_PREFIX relocates them for tests only.
 PORT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 export PORT_DIR
@@ -44,18 +44,18 @@ if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ] && [ -f "$MG/clang22-
 fi
 CLANG_PREFIX="$MG/$CLANG_DIR"
 check_product "$CLANG_DIR" "$CLANG_PREFIX" "$CLANG22_VERSION" \
-  "macOS: sudo installer -pkg $CLANG_DIR-$CLANG22_VERSION.pkg -target /; Linux: install@v1 products: $CLANG_DIR@$CLANG22_VERSION"
+  "macOS: sudo installer -pkg $CLANG_DIR-$CLANG22_VERSION.pkg -target /; Linux: sudo -E sh $PORT_DIR/build/provision-linux.sh $CLANG_DIR@$CLANG22_VERSION"
 CLANG_HAVE="$CP_HAVE"
 
 # spec: PORT.md, the build chain -- the installed SDK's version is not pinned by the line, only its presence.
 SDK109="$MG/sdk109/SDKs/MacOSX10.9.sdk"
-[ -d "$SDK109" ] || refuse "sdk109 is not installed: no $SDK109. Install it: macOS: sudo longboat sdk install 10.9; Linux: install@v1 products: sdk109 (any version)"
+[ -d "$SDK109" ] || refuse "sdk109 is not installed: no $SDK109. Install it: macOS: sudo longboat sdk install 10.9; Linux: sudo -E sh $PORT_DIR/build/provision-linux.sh sdk109 (any version)"
 
 RECAULK_LIB="$MG/recaulk/lib/librecaulk.a"
 check_product recaulk "$MG/recaulk" "$RECAULK_VERSION" \
-  "macOS: sudo installer -pkg recaulk-$RECAULK_VERSION.pkg -target /; Linux: install@v1 products: recaulk@$RECAULK_VERSION"
+  "macOS: sudo installer -pkg recaulk-$RECAULK_VERSION.pkg -target /; Linux: sudo -E sh $PORT_DIR/build/provision-linux.sh recaulk@$RECAULK_VERSION"
 RECAULK_HAVE="$CP_HAVE"
-[ -f "$RECAULK_LIB" ] || refuse "recaulk $RECAULK_VERSION has no $RECAULK_LIB; reinstall it: install@v1 products: recaulk@$RECAULK_VERSION"
+[ -f "$RECAULK_LIB" ] || refuse "recaulk $RECAULK_VERSION has no $RECAULK_LIB; reinstall it (Linux: sudo -E sh $PORT_DIR/build/provision-linux.sh recaulk@$RECAULK_VERSION)"
 # spec: PORT.md, the build chain -- Mach-O reads go through the clang22 prefix's llvm-lipo (no lipo on Linux).
 _archs="$("$CLANG_PREFIX/bin/llvm-lipo" -info "$RECAULK_LIB" 2>/dev/null | sed -n 's/.*: //p')" || refuse "$CLANG_PREFIX/bin/llvm-lipo could not read $RECAULK_LIB"
 case " $_archs " in
