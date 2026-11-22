@@ -70,3 +70,12 @@ jobs:
     with:
       version: v${{ needs.build.outputs.version }}
       artifact: golang-port
+
+  required:
+    name: required (release)
+    if: always()
+    needs: [build, publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: Mavergreen/shipyard/.github/actions/required-gate@v1
+        with: { needs: "${{ toJSON(needs) }}" }
