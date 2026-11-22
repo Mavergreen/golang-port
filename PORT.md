@@ -249,6 +249,8 @@ Rules the chain keeps and differences a reader will notice; none is a regression
 - **The builder key leaves out the bootstrap on purpose.** `$WORK/builder.key` covers the Go version, the patches, the overlay, the
   clang22 version and `uname -sm`, not the bootstrap Go: make.bash rebuilds the toolchain in three stages, so its output does
   not depend on the bootstrap. Do not add it back.
+  sdk109 and Recaulk versions are left out too, deliberately: nothing make.bash builds ships as-is (native relinks with `-a`; cross
+  and linux are `CGO_ENABLED=0`), so nobody should add them "for safety".
 - **The builder's `bin/` is overwritten by the product build:** `build-native.sh` on a darwin host, `build-linux-cross.sh` on a
   Linux host, install the product's binaries over it (same Go version, so later builds are unaffected).
 - **The Linux archive** (`go1NN-cross-<version>-linux-x86_64.tar.gz`): its contents are identical whichever host built it, but its

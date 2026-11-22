@@ -1,6 +1,8 @@
 #!/bin/sh
 # platform: host-agnostic
 here=$(cd "$(dirname "$0")/.." && pwd)
+# spec: tests/fixtures/line-* are copies of what a line holds and stay out of the tarball, so this test skips there
+ls -d "$here"/tests/fixtures/line-* >/dev/null 2>&1 || { echo "skip: no tests/fixtures/line-* (run from the tarball); this test needs the line fixtures"; exit 77; }
 t=$(mktemp -d "${TMPDIR:-/tmp}/builder-env-test.XXXXXX") || exit 1
 [ -d "$t" ] || exit 1
 trap 'rm -rf "$t"' EXIT
@@ -52,14 +54,17 @@ count() { [ -f "$t/count/$1" ] && wc -l < "$t/count/$1" | tr -d ' ' || echo 0; }
 rm -rf "$t/line"; cp -R "$fx0" "$t/line"; mkdir -p "$t/count"
 
 # spec: build/build-builder.sh -- stray compiler/target variables are unset, said so on stderr, and never reach make.bash
-CC=gcc CC_FOR_TARGET=x GOOS=linux CGO_ENABLED=1 CGO_CFLAGS=-g GOHOSTARCH=arm64 run "$t/line"
+CC=gcc CC_FOR_TARGET=x GOOS=linux CGO_ENABLED=1 CGO_CFLAGS=-g GOHOSTARCH=arm64 GOAMD64=v3 GOEXPERIMENT=x PKG_CONFIG=pc run "$t/line"
 [ "$rc" = 0 ] || fail "first run: exit $rc: $(cat "$t/err")"
 [ "$(count makes)" = 1 ] || fail "first run: make.bash ran $(count makes) times"
-for v in CC CC_FOR_TARGET GOOS GOARCH GOHOSTOS GOHOSTARCH CGO_ENABLED CGO_CFLAGS; do
+for v in CC CC_FOR_TARGET GOOS GOARCH GOHOSTOS GOHOSTARCH CGO_ENABLED CGO_CFLAGS GOAMD64 GOEXPERIMENT PKG_CONFIG; do
   hasnt "$t/count/env" "^$v=" "make.bash env"
 done
 has "$t/err" 'unset.*CC_FOR_TARGET' "stderr names what was unset"
 has "$t/err" 'unset.*CGO_CFLAGS' "stderr names CGO_CFLAGS"
+has "$t/err" 'unset.*GOAMD64' "stderr names GOAMD64"
+has "$t/err" 'unset.*GOEXPERIMENT' "stderr names GOEXPERIMENT"
+has "$t/err" 'unset.*PKG_CONFIG' "stderr names PKG_CONFIG"
 
 # spec: build/build-builder.sh -- the wrapper's directory leads PATH; the darwin/amd64 external-link default; bootstrap; ./make.bash -v from src
 has "$t/count/env" "^PATH=$t/work/cc/bin:" "PATH"

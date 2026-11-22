@@ -2,6 +2,8 @@
 # platform: host-agnostic
 # spec: build/fetch-go.sh, build/fetch-ca.sh -- Offline tests for build/fetch-go.sh (tarball pre-placed, GO_DL_JSON feed) and build/fetch-ca.sh (vendored path).
 here=$(cd "$(dirname "$0")/.." && pwd)
+# spec: tests/fixtures/line-* are copies of what a line holds and stay out of the tarball, so this test skips there
+ls -d "$here"/tests/fixtures/line-* >/dev/null 2>&1 || { echo "skip: no tests/fixtures/line-* (run from the tarball); this test needs the line fixtures"; exit 77; }
 t=$(mktemp -d "${TMPDIR:-/tmp}/fetch-test.XXXXXX") || exit 1
 [ -d "$t" ] || exit 1
 trap 'rm -rf "$t"' EXIT

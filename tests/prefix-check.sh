@@ -1,16 +1,23 @@
 #!/bin/sh
 # platform: host-agnostic
 # spec: PORT.md, the build chain -- fixed C-toolchain paths. Every prefix is derived from the line (/usr/local/mavergreen/go${GO_LINE}),
-#       so this asserts the derived VALUES for each line the port has a fixture for, not the spelling of any source line; and that no
-#       tracked file of the port still names a prefix the family has left.
+#       so this asserts the derived VALUES for the line(s) it checks, not the spelling of any source line; and that no
+#       file of the line or port still names a prefix the family has left. Two modes: LINE_ROOT set -- check that line's own files
+#       (a line runs this from the port's tarball, which has no fixtures and no git); otherwise the port's own run, over
+#       tests/fixtures/line-* and the port's tracked files.
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 PORT_DIR="$(cd "$here/.." && pwd)"
 export PORT_DIR
 fail=0
 n=0
-for fx in "$here"/fixtures/line-*; do
-  [ -d "$fx" ] || continue
+if [ -n "${LINE_ROOT:-}" ]; then
+  lines="$LINE_ROOT"
+else
+  lines=""
+  for fx in "$here"/fixtures/line-*; do [ -d "$fx" ] && lines="$lines $fx"; done
+fi
+for fx in $lines; do
   n=$((n + 1))
   out="$(LINE_ROOT="$fx" sh -c '. "$PORT_DIR/build/env.sh" && printf "%s\n%s\n%s\n%s\n" "$GO_LINE" "$PREFIX" "$CROSS_PREFIX" "$CA_DIR"')" \
     || { echo "FAIL: env.sh does not source for $fx"; fail=1; continue; }
@@ -28,11 +35,27 @@ done
 [ "$n" -gt 0 ] || { echo "FAIL: no tests/fixtures/line-* to derive prefixes from"; exit 1; }
 
 # spec: PORT.md, the build chain -- the old prefixes: /usr/local/mavericks-go (before the family rename) and /usr/local/go1NN (before products had trees of their own)
-cd "$PORT_DIR"
-for f in $(git ls-files build CMakeLists.txt .github resources updater overlay PORT.md INGREDIENTS.md 'release-notes/*.md'); do
-  if grep -En '/usr/local/mavericks-go|/usr/local/go1[0-9][0-9]' "$f" >/dev/null 2>&1; then
-    echo "FAIL: an old prefix is still named in $f:"; grep -En '/usr/local/mavericks-go|/usr/local/go1[0-9][0-9]' "$f"; fail=1
+# spec: PORT.md, the build chain -- the files to scan: in LINE_ROOT mode, the line's own text files (no git needed); in the port's own run, its tracked
+#       files (git ls-files) when git is there, else the same directories by find.
+old='/usr/local/mavericks-go|/usr/local/go1[0-9][0-9]'
+if [ -n "${LINE_ROOT:-}" ]; then
+  cd "$LINE_ROOT"
+  files="$(find . -path ./.git -prune -o -type f ! -name '._*' ! -name .DS_Store -print | sed 's|^\./||' | LC_ALL=C sort)"
+else
+  cd "$PORT_DIR"
+  if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
+    files="$(git ls-files build CMakeLists.txt .github resources updater overlay PORT.md INGREDIENTS.md 'release-notes/*.md')"
+  else
+    files="$(find build CMakeLists.txt .github resources updater overlay PORT.md INGREDIENTS.md release-notes -type f ! -name '._*' ! -name .DS_Store 2>/dev/null | LC_ALL=C sort)"
+  fi
+fi
+old_ifs=$IFS; IFS='
+'
+for f in $files; do
+  if grep -En "$old" "$f" >/dev/null 2>&1; then
+    echo "FAIL: an old prefix is still named in $f:"; grep -En "$old" "$f"; fail=1
   fi
 done
+IFS=$old_ifs
 [ "$fail" = 0 ] || exit 1
 echo "prefix-check OK"

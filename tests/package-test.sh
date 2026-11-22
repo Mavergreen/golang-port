@@ -4,6 +4,8 @@
 #       on any host through stevedore. This reads the two .pkg files back with stevedore, never with pkgutil, so it runs wherever
 #       package.sh does. Needs shipyard (stage_product.sh) and a stevedore it can fetch; without either it skips (77).
 here=$(cd "$(dirname "$0")/.." && pwd)
+# spec: tests/fixtures/line-* are copies of what a line holds and stay out of the tarball, so this test skips there
+ls -d "$here"/tests/fixtures/line-* >/dev/null 2>&1 || { echo "skip: no tests/fixtures/line-* (run from the tarball); this test needs the line fixtures"; exit 77; }
 t=$(mktemp -d "${TMPDIR:-/tmp}/package-test.XXXXXX") || exit 1
 [ -d "$t" ] || exit 1
 trap 'rm -rf "$t"' EXIT
@@ -126,5 +128,6 @@ for v in native cross; do
   grep -qx "variant=$v" "$f" || fail "$f: variant"
   grep -qx 'built_clang22=22.1.8-mavericks.99' "$f" || fail "$f: built_clang22 from cc/versions: $(cat "$f")"
   grep -qx "go_version=$GO_VERSION" "$f" || fail "$f: go_version"
+  grep -qx "port_version=$(tr -d "[:space:]" < "$here/UPSTREAM_VERSION")" "$f" || fail "$f: port_version (the port's UPSTREAM_VERSION)"
 done
 echo "PASS: package"

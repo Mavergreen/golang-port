@@ -1,6 +1,8 @@
 #!/bin/sh
 # platform: host-agnostic
 here=$(cd "$(dirname "$0")/.." && pwd)
+# spec: tests/fixtures/line-* are copies of what a line holds and stay out of the tarball, so this test skips there
+ls -d "$here"/tests/fixtures/line-* >/dev/null 2>&1 || { echo "skip: no tests/fixtures/line-* (run from the tarball); this test needs the line fixtures"; exit 77; }
 t=$(mktemp -d "${TMPDIR:-/tmp}/c-toolchain-test.XXXXXX") || exit 1
 [ -d "$t" ] || exit 1
 trap 'rm -rf "$t"' EXIT
@@ -85,16 +87,10 @@ for tool in dsymutil llvm-strip llvm-ar; do
   [ "$rc" = 1 ] || fail "clang22 without $tool: exit $rc"
   has "$t/err" "$tool" "clang22 without $tool"
 done
-# spec: build/c-toolchain.sh -- a native build does not need sdk113
-[ ! -d "$P/sdk113" ] || fail "fixture should have no sdk113"
-
-# spec: build/c-toolchain.sh -- sdk113 is checked only with --with-sdk113
+# spec: build/c-toolchain.sh -- no product uses sdk113 (the updater's SDK comes from shipyard), so the flag is gone and nothing records it
 run "$P" --with-sdk113
-[ "$rc" = 1 ] || fail "--with-sdk113 without sdk113: exit $rc"
-has "$t/err" sdk113 "--with-sdk113"; has "$t/err" "longboat sdk install 11.3" "--with-sdk113"
-mkdir -p "$P/sdk113/SDKs/MacOSX11.3.sdk"; mkplist "$P/sdk113" 20260101.1
-run "$P" --with-sdk113
-[ "$rc" = 0 ] || fail "--with-sdk113 with sdk113: exit $rc: $(cat "$t/err")"
+[ "$rc" = 2 ] || fail "--with-sdk113 is not an option any more: exit $rc"
+has "$t/err" "unknown argument --with-sdk113" "--with-sdk113"
 
 # spec: build/c-toolchain.sh -- strict pins (the default here is T_STRICT=1) refuse version drift, naming both versions and the install command
 T_STRICT=1
@@ -164,8 +160,8 @@ for s in 22.1.7-mavericks.1 "$want_clang" 20200101.9 "$want_recaulk" match; do h
 recaulk=20200101.9
 sdk109=20261012.2
 pins=lenient" ] || fail "versions (lenient): $(cat "$t/work/cc/versions")"
-run "$P" --with-sdk113; [ "$rc" = 0 ] || fail "versions run: $rc"
-has "$t/work/cc/versions" "^sdk113=20260101.1\$" "versions"; has "$t/work/cc/versions" "^pins=lenient\$" "versions"
+run "$P"; [ "$rc" = 0 ] || fail "versions run: $rc"
+hasnt "$t/work/cc/versions" sdk113 "versions"; has "$t/work/cc/versions" "^pins=lenient\$" "versions"
 T_STRICT=1; run "$P"; [ "$rc" = 0 ] || fail "strict, no drift: $rc"
 has "$t/work/cc/versions" "^pins=strict\$" "versions"
 echo "ok: c-toolchain"

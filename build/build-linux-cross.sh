@@ -11,6 +11,9 @@ export PORT_DIR
 . "$PORT_DIR/build/env.sh" || exit $?
 TL_NAME=build-linux-cross.sh
 sh "$PORT_DIR/build/build-builder.sh"
+# spec: PORT.md, the build chain -- the archive's mtimes are the line's commit time unless SOURCE_DATE_EPOCH is set: source-date-epoch.sh reads MAVERICKS_ROOT.
+: "${MAVERICKS_ROOT:=$LINE_ROOT}"
+export MAVERICKS_ROOT
 . "$PORT_DIR/build/toolchain-lib.sh"
 RECAULK_LIB="$(tl_cc_var recaulk)"
 root="go$GO_LINE-cross"
@@ -57,7 +60,7 @@ archive="$out/$root-$PKG_VERSION-linux-x86_64.tar.gz"
 # spec: PORT.md, the build chain -- the build record, as the lines' package scripts write it; host and root say what this archive is.
 sh "$SHIPYARD_SCRIPTS/build-info.sh" "$dest/build-info-linux-cross.txt" \
   variant=linux-cross host=linux-x86_64 root="$root" prefix="$CROSS_PREFIX" \
-  go_version="$GO_VERSION" go_line="$GO_LINE" pkg_version="$PKG_VERSION" \
+  go_version="$GO_VERSION" go_line="$GO_LINE" pkg_version="$PKG_VERSION" port_version="$(tr -d '[:space:]' < "$PORT_DIR/UPSTREAM_VERSION")" \
   recaulk_version="$RECAULK_VERSION" ca_sha256="$CA_SHA256" clang22_version="$CLANG22_VERSION" \
   $(sed -n 's/^\([a-z0-9]*\)=\(.*\)$/built_\1=\2/p' "$WORK/cc/versions")
 cp "$dest/build-info-linux-cross.txt" "$out/build-info-linux-cross.txt"

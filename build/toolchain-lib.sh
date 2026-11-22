@@ -19,7 +19,7 @@ tl_cc_var() {
 tl_go_env() {
   _tl_unset=""
   for _tl_v in CC CXX CC_FOR_TARGET CXX_FOR_TARGET GOOS GOARCH GOHOSTOS GOHOSTARCH GOROOT_FINAL GOFLAGS GOAMD64 GOARM64 \
-               GOEXPERIMENT GOBIN GO_EXTLINK_ENABLED GO_LDFLAGS $(env | sed -n 's/^\(CGO_[A-Za-z0-9_]*\)=.*/\1/p'); do
+               GOEXPERIMENT GOFIPS140 GOBIN GO_EXTLINK_ENABLED GO_LDFLAGS $(env | sed -n 's/^\(CGO_[A-Za-z0-9_]*\)=.*/\1/p'); do
     if [ -n "$(eval "printf %s \"\${$_tl_v+set}\"")" ]; then _tl_unset="$_tl_unset $_tl_v"; unset "$_tl_v"; fi
   done
   [ -z "$_tl_unset" ] || echo "$TL_NAME: unset$_tl_unset so the build cannot inherit them" >&2

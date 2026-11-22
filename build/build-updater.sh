@@ -5,22 +5,24 @@
 #       MavericksToolchain.cmake, clang22 as the ObjC compiler with an explicit target, --no-default-config, -fuse-ld=lld.
 #       usage: LINE_ROOT=<line checkout> [CMAKE=<cmake>] sh build/build-updater.sh native|cross
 #       Prints the app: $MAVERICKS_BUILD_ROOT/golang-updater[-cross]/go<LINE>[-cross]-updater.app (build/package.sh's UPD_APP default).
-#       native: x86_64, minos 10.9, the 10.9 SDK. cross: arm64, minos 11.0, the 11.3 SDK (so it needs sdk113 installed, like c-toolchain.sh checks).
+#       native: x86_64, minos 10.9, the 10.9 SDK. cross: arm64, minos 11.0; its SDK comes from shipyard's MavericksToolchain.cmake (fetch_sdk.sh's cache), not from sdk113.
 set -eu
 PORT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 export PORT_DIR
 variant="${1:-}"
 case "$variant" in
-  native) dirname=golang-updater; short_suffix=""; arch=x86_64; floor=10.9; sdk_flag="" ;;
-  cross)  dirname=golang-updater-cross; short_suffix="-cross"; arch=arm64; floor=11.0; sdk_flag="--with-sdk113" ;;
+  native) dirname=golang-updater; short_suffix=""; arch=x86_64; floor=10.9;;
+  cross)  dirname=golang-updater-cross; short_suffix="-cross"; arch=arm64; floor=11.0;;
   *) echo "usage: LINE_ROOT=<line> build-updater.sh native|cross" >&2; exit 2 ;;
 esac
 . "$PORT_DIR/build/env.sh" || exit $?
 die() { echo "build-updater.sh: $*" >&2; exit 1; }
 
-# shellcheck disable=SC2086  # sdk_flag is empty or one word
-sh "$PORT_DIR/build/c-toolchain.sh" $sdk_flag > /dev/null || exit $?
-cc_prefix=$(sed -n "s/^cc_prefix='\(.*\)'$/\1/p" "$WORK/cc/vars")
+sh "$PORT_DIR/build/c-toolchain.sh" > /dev/null || exit $?
+# spec: PORT.md, the build chain -- the wrapper's own paths, read the way every build script reads them (toolchain-lib.sh).
+TL_NAME=build-updater.sh
+. "$PORT_DIR/build/toolchain-lib.sh"
+cc_prefix="$(tl_cc_var cc_prefix)"
 [ -x "$cc_prefix/bin/clang" ] || die "no clang22 at $cc_prefix (c-toolchain.sh should have refused)"
 
 # spec: PORT.md, the build chain -- the CMake that configures against shipyard is its own (shipyard-cmake), else any cmake with MavericksShipyard_DIR

@@ -99,7 +99,7 @@ rm -f "$comp"   # intermediate: only the floored product archive ships
 if [ "$variant" = native ]; then arch=x86_64; else arch=arm64; fi
 sh "$SHIPYARD_SCRIPTS/build-info.sh" "$out/build-info-$variant.txt" \
   variant="$variant" arch="$arch" prefix="$prefix" \
-  go_version="$GO_VERSION" go_line="$GO_LINE" pkg_version="$PKG_VERSION" \
+  go_version="$GO_VERSION" go_line="$GO_LINE" pkg_version="$PKG_VERSION" port_version="$(tr -d '[:space:]' < "$PORT_DIR/UPSTREAM_VERSION")" \
   recaulk_version="$RECAULK_VERSION" ca_sha256="$CA_SHA256" clang22_version="$CLANG22_VERSION" \
   $(sed -n 's/^\([a-z0-9]*\)=\(.*\)$/built_\1=\2/p' "$WORK/cc/versions")
 echo "$pkg"

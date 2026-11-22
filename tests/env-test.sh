@@ -1,6 +1,8 @@
 #!/bin/sh
 # platform: host-agnostic
 here=$(cd "$(dirname "$0")/.." && pwd)
+# spec: tests/fixtures/line-* are copies of what a line holds and stay out of the tarball, so this test skips there
+ls -d "$here"/tests/fixtures/line-* >/dev/null 2>&1 || { echo "skip: no tests/fixtures/line-* (run from the tarball); this test needs the line fixtures"; exit 77; }
 t=$(mktemp -d "${TMPDIR:-/tmp}/env-test.XXXXXX") || exit 1
 [ -d "$t" ] || exit 1
 trap 'rm -rf "$t"' EXIT
@@ -55,8 +57,8 @@ expect_fail() {
   done
 }
 
-check_line 126 1.26.10 20261025.5 11.0
-check_line 127 1.27.3 20261109.2 13.0
+check_line 126 1.26.11 20261122.2 11.0
+check_line 127 1.27.4 20261122.2 13.0
 
 # spec: build/env.sh -- no LINE_ROOT -> exit 2
 rc=0
@@ -71,6 +73,37 @@ rc=0
 ( GO_LINE=126; export GO_LINE; PORT_DIR="$here"; LINE_ROOT="$t/skew"; export PORT_DIR LINE_ROOT; . "$here/build/env.sh" ) >"$t/out" 2>&1 || rc=$?
 [ "$rc" = 1 ] || fail "GO_LINE skew: exit $rc, want 1: $(cat "$t/out")"
 grep -q 126 "$t/out" && grep -q 1.27.4 "$t/out" || fail "GO_LINE skew: message lacks 126 and 1.27.4: $(cat "$t/out")"
+
+
+# spec: build/env.sh -- no PORT_DIR -> exit 2 naming PORT_DIR (a sourced file cannot find itself in every sh)
+rc=0
+( unset PORT_DIR; LINE_ROOT="$here/tests/fixtures/line-127"; export LINE_ROOT; . "$here/build/env.sh" ) >"$t/out" 2>&1 || rc=$?
+[ "$rc" = 2 ] || fail "no PORT_DIR: exit $rc, want 2: $(cat "$t/out")"
+grep -q PORT_DIR "$t/out" || fail "no PORT_DIR: message lacks PORT_DIR: $(cat "$t/out")"
+
+# spec: build/env.sh -- a stale VERSION (UPSTREAM 1.27.4, VERSION 1.27.3-mavericks.1) -> exit 1 naming both files and both values
+cp -R "$here/tests/fixtures/line-127" "$t/stale"
+echo 1.27.3-mavericks.1 > "$t/stale/VERSION"
+expect_fail 1 "stale VERSION" "$t/stale" "UPSTREAM_VERSION" "VERSION" "1\.27\.4" "1\.27\.3-mavericks\.1"
+# spec: build/env.sh -- a VERSION that is not <go>-mavericks.<digits> -> exit 1
+for bad in 1.27.4 1.27.4-mavericks. 1.27.4-mavericks.x 1.27.4-mavericks.1.2 1.27.40-mavericks.1; do
+  echo "$bad" > "$t/stale/VERSION"
+  expect_fail 1 "VERSION $bad" "$t/stale" "$bad"
+done
+echo 1.27.4-mavericks.12 > "$t/stale/VERSION"
+env_of "$t/stale" > "$t/env" 2>"$t/err" || fail "VERSION 1.27.4-mavericks.12 refused: $(cat "$t/err")"
+want "multi-digit rev" "PKG_VERSION=1.27.4-mavericks.12"
+
+# spec: build/env.sh -- no VERSION: the fallback is the line's build/version.sh auto; a stale or empty answer refuses too
+cp -R "$here/tests/fixtures/line-127" "$t/auto"
+rm "$t/auto/VERSION"; mkdir "$t/auto/build"
+printf '#!/bin/sh\necho FULL=1.27.4-mavericks.7\n' > "$t/auto/build/version.sh"
+env_of "$t/auto" > "$t/env" 2>"$t/err" || fail "fallback: env.sh failed: $(cat "$t/err")"
+want "fallback" "PKG_VERSION=1.27.4-mavericks.7"
+printf '#!/bin/sh\necho FULL=1.27.3-mavericks.7\n' > "$t/auto/build/version.sh"
+expect_fail 1 "stale fallback" "$t/auto" "1\.27\.3-mavericks\.7" "UPSTREAM_VERSION"
+printf '#!/bin/sh\necho nothing\n' > "$t/auto/build/version.sh"
+expect_fail 1 "empty fallback" "$t/auto" "no package version" "version.sh"
 
 # spec: build/env.sh -- missing line.env -> exit 1 naming the file
 cp -R "$here/tests/fixtures/line-127" "$t/noenv"

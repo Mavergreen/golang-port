@@ -1,19 +1,13 @@
 #!/bin/sh
 # platform: host-agnostic
 # spec: PORT.md, the build chain -- build/c-toolchain.sh: checks the installed products against the line's pins and prints the path of the
-#       build-time CC wrapper (<WORK>/cc/bin/clang). usage: LINE_ROOT=<line checkout> sh build/c-toolchain.sh [--with-sdk113]
+#       build-time CC wrapper (<WORK>/cc/bin/clang). usage: LINE_ROOT=<line checkout> sh build/c-toolchain.sh
 #       Go hashes the C compiler's absolute paths into build IDs, so the products are at the family's installed prefixes
 #       on every host (on Linux, install@v1 `products:` puts each archive at its macOS pkg's prefix) and the script
 #       never falls back to a cache path. MAVERGREEN_PREFIX relocates them for tests only.
 PORT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 export PORT_DIR
-with_sdk113=no
-for a in "$@"; do
-  case "$a" in
-    --with-sdk113) with_sdk113=yes ;;
-    *) echo "c-toolchain.sh: unknown argument $a (usage: c-toolchain.sh [--with-sdk113])" >&2; exit 2 ;;
-  esac
-done
+[ $# -eq 0 ] || { echo "c-toolchain.sh: unknown argument $1 (usage: c-toolchain.sh)" >&2; exit 2; }
 . "$PORT_DIR/build/env.sh" || exit $?
 
 MG="${MAVERGREEN_PREFIX:-/usr/local/mavergreen}"
@@ -56,9 +50,6 @@ CLANG_HAVE="$CP_HAVE"
 # spec: PORT.md, the build chain -- the installed SDK's version is not pinned by the line, only its presence.
 SDK109="$MG/sdk109/SDKs/MacOSX10.9.sdk"
 [ -d "$SDK109" ] || refuse "sdk109 is not installed: no $SDK109. Install it: macOS: sudo longboat sdk install 10.9; Linux: install@v1 products: sdk109 (any version)"
-if [ "$with_sdk113" = yes ]; then
-  [ -d "$MG/sdk113/SDKs/MacOSX11.3.sdk" ] || refuse "sdk113 is not installed: no $MG/sdk113/SDKs/MacOSX11.3.sdk. Install it: macOS: sudo longboat sdk install 11.3; Linux: install@v1 products: sdk113 (any version)"
-fi
 
 RECAULK_LIB="$MG/recaulk/lib/librecaulk.a"
 check_product recaulk "$MG/recaulk" "$RECAULK_VERSION" \
@@ -96,7 +87,6 @@ sdkv() { _v="$(plist_version "$1")"; printf %s "${_v:-unknown}"; }
   echo "clang22=$CLANG_HAVE"
   echo "recaulk=$RECAULK_HAVE"
   echo "sdk109=$(sdkv "$MG/sdk109")"
-  [ "$with_sdk113" = yes ] && echo "sdk113=$(sdkv "$MG/sdk113")"
   echo "pins=$PINS"
 } > "$WORK/cc/versions"
 echo "$CC_DIR/clang"

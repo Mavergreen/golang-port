@@ -30,6 +30,10 @@ for f in bin/go bin/gofmt bin/mavericks-cross-clang lib/librecaulk.a go.env buil
 done
 echo "ok: layout"
 
+# spec: build/build-linux-cross.sh -- the build record names the port version too (the port's UPSTREAM_VERSION)
+tar -xzf "$tb" -C "$t" "$root/build-info-linux-cross.txt" || fail "cannot extract build-info"
+grep -qx "port_version=$(tr -d "[:space:]" < "$here/UPSTREAM_VERSION")" "$t/$root/build-info-linux-cross.txt" || fail "build-info lacks port_version: $(cat "$t/$root/build-info-linux-cross.txt")"
+
 # spec: build/build-linux-cross.sh -- the archive's bin/go is a Linux x86-64 program (ELF, e_machine 0x3e), whatever host built it
 tar -xzf "$tb" -C "$t" "$root/bin/go" || fail "cannot extract bin/go"
 hd=$(od -An -tx1 -N20 "$t/$root/bin/go" | tr -d ' \n')

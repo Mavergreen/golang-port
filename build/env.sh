@@ -5,7 +5,9 @@
 #       A line (golang-126, golang-127, ...) holds only its inputs: UPSTREAM_VERSION, components/recaulk/version,
 #       components/clang22/version, line.env (CROSS_MIN_OS, CA_SHA256) and optionally VERSION. Everything the
 #       build scripts need is derived here, identically on every host.
-: "${PORT_DIR:=$(cd "$(dirname "${BASH_SOURCE:-$0}")/.." 2>/dev/null && pwd || pwd)}"
+# spec: PORT.md, the build chain -- a sourced file cannot locate itself in every sh (dash has no BASH_SOURCE), so the caller says where the
+#       port is: every port script sets PORT_DIR before it sources this.
+[ -n "${PORT_DIR:-}" ] || { echo "env.sh: PORT_DIR is not set -- the caller sets it to the port checkout before sourcing" >&2; exit 2; }
 export PORT_DIR
 [ -n "${LINE_ROOT:-}" ] || { echo "env.sh: LINE_ROOT is not set -- point it at the line checkout" >&2; exit 2; }
 export LINE_ROOT
@@ -30,10 +32,21 @@ export GO_VERSION GO_LINE
 # spec: PORT.md, the build chain -- Package version: <upstream>-mavericks.<rev>. The release workflow writes VERSION; before a release is
 #       cut, fall back to the computed auto version so a build never depends on a committed VERSION file.
 if [ -f "$LINE_ROOT/VERSION" ]; then
-  PKG_VERSION="$(cat "$LINE_ROOT/VERSION")"
+  PKG_VERSION="$(cat "$LINE_ROOT/VERSION")"; _env_vsrc="$LINE_ROOT/VERSION"
 else
-  PKG_VERSION="$(sh "$LINE_ROOT/build/version.sh" auto | sed -n 's/^FULL=//p')"
+  PKG_VERSION="$(sh "$LINE_ROOT/build/version.sh" auto | sed -n 's/^FULL=//p')"; _env_vsrc="$LINE_ROOT/build/version.sh auto"
 fi
+# spec: PORT.md, the build chain -- a package's name and manifest must agree with the Go it holds: a stale VERSION (left from the line's
+#       previous Go) refuses here rather than ship a pkg named for one Go and built from another.
+[ -n "$PKG_VERSION" ] || { echo "env.sh: no package version from $_env_vsrc (UPSTREAM_VERSION says $GO_VERSION)" >&2; exit 1; }
+case "$PKG_VERSION" in
+  "$GO_VERSION"-mavericks.*) _env_rev="${PKG_VERSION#"$GO_VERSION"-mavericks.}" ;;
+  *) _env_rev="" ;;
+esac
+case "$_env_rev" in
+  ""|*[!0-9]*) echo "env.sh: $_env_vsrc says '$PKG_VERSION', but $LINE_ROOT/UPSTREAM_VERSION says $GO_VERSION: want $GO_VERSION-mavericks.<digits> -- is VERSION stale?" >&2; exit 1 ;;
+esac
+unset _env_rev _env_vsrc
 export PKG_VERSION
 
 # spec: PORT.md, the build chain -- a component's pinned version: one token in components/<name>/version

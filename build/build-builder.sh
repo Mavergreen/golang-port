@@ -54,7 +54,8 @@ export GOROOT_BOOTSTRAP
 #       target, and cgo settings all come from the wrapper on PATH and Go's own defaults. Each variable that was set is named.
 _unset=""
 for v in CC CXX CC_FOR_TARGET CXX_FOR_TARGET GOOS GOARCH GOHOSTOS GOHOSTARCH GOROOT_FINAL GO_LDFLAGS BOOT_GO_LDFLAGS \
-         GO_BOOTSTRAP_LDFLAGS GO_EXTLINK_ENABLED $(env | sed -n 's/^\(CGO_[A-Za-z0-9_]*\)=.*/\1/p'); do
+         GO_BOOTSTRAP_LDFLAGS GO_EXTLINK_ENABLED \
+         GOAMD64 GOARM64 GO386 GOARM GOEXPERIMENT GOFIPS140 GO_LDSO PKG_CONFIG $(env | sed -n 's/^\(CGO_[A-Za-z0-9_]*\)=.*/\1/p'); do
   if [ -n "$(eval "printf %s \"\${$v+set}\"")" ]; then _unset="$_unset $v"; unset "$v"; fi
 done
 [ -z "$_unset" ] || echo "build-builder.sh: unset$_unset so the build cannot inherit them" >&2
