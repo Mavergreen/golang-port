@@ -74,11 +74,11 @@ missing() {
 
 write native "$t/native"
 [ "$rc" = 0 ] || fail "native: exit $rc: $(cat "$t/err")"
-check native mavericks-clang clang22 /usr/local/mavergreen/go127/lib/librecaulk.a
+check native mavericks-clang clang22 "$t/native/lib/librecaulk.a"
 
 write cross "$t/cross"
 [ "$rc" = 0 ] || fail "cross: exit $rc: $(cat "$t/err")"
-check cross mavericks-cross-clang clang22-cross /usr/local/mavergreen/go127-cross/lib/librecaulk.a
+check cross mavericks-cross-clang clang22-cross "$t/cross/lib/librecaulk.a"
 
 # spec: build/write-wrappers.sh -- the linux wrapper finds Recaulk in its own archive, wherever that is extracted, and clang22 at
 #       MAVERGREEN_CLANG22 when set, else at the family prefix
@@ -100,7 +100,9 @@ rm -rf "$t/linux"; mv "$t/elsewhere" "$t/linux"
 # spec: build/write-wrappers.sh -- each wrapper fails, naming the product and its install command, when its clang22 is absent
 rm -rf "$P/clang22" "$P/clang22-cross"
 missing native mavericks-clang clang22 "sudo installer -pkg clang22-22.1.8-mavericks.25.pkg"
+missing native mavericks-clang clang22 "or set MAVERGREEN_CLANG22 to a clang22 directory"
 missing cross mavericks-cross-clang clang22-cross "sudo installer -pkg clang22-cross-22.1.8-mavericks.25.pkg"
+missing cross mavericks-cross-clang clang22-cross "or set MAVERGREEN_CLANG22_CROSS to a clang22-cross directory"
 missing linux mavericks-cross-clang clang22 "list clang22@22.1.8-mavericks.25 under install@v1 products:"
 missing linux mavericks-cross-clang clang22 "under install@v1 products:" MAVERGREEN_CLANG22="$t/nowhere"
 
@@ -108,7 +110,10 @@ missing linux mavericks-cross-clang clang22 "under install@v1 products:" MAVERGR
 mkdir -p "$P/clang22/bin"; printf '#!/bin/sh\necho "$0 $*"\n' > "$P/clang22/bin/clang"; chmod +x "$P/clang22/bin/clang"
 rm -rf "$P/sdk109"
 missing native mavericks-clang sdk109 "sudo longboat sdk install 10.9"
+missing native mavericks-clang sdk109 "or set MAVERGREEN_SDK109 to an sdk109 directory"
+missing cross mavericks-cross-clang sdk109 "or set MAVERGREEN_SDK109 to an sdk109 directory" MAVERGREEN_CLANG22_CROSS="$P/clang22"
 missing linux mavericks-cross-clang sdk109 "list sdk109@<any release> under install@v1 products:"
+missing linux mavericks-cross-clang sdk109 "or set MAVERGREEN_SDK109 to an sdk109 directory"
 
 # spec: build/write-wrappers.sh -- usage errors exit 2
 write bogus "$t/bogus"; [ "$rc" = 2 ] || fail "unknown kind: exit $rc"

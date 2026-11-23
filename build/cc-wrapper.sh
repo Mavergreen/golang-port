@@ -32,11 +32,12 @@ cc_wrapper() {
     echo '  esac'
     echo '  prev=$a'
     echo 'done'
-    printf 'base="-no-canonical-prefixes --no-default-config --target=x86_64-apple-macos%s -isysroot $sdk -mmacosx-version-min=%s"\n' "$MACOS_MIN" "$MACOS_MIN"
+    # spec: PORT.md, the build chain -- the SDK, compiler and Recaulk paths are quoted: a relocated toolchain or an override may hold a space.
+    _cw_base="-no-canonical-prefixes --no-default-config --target=x86_64-apple-macos$MACOS_MIN -isysroot \"\$sdk\" -mmacosx-version-min=$MACOS_MIN"
     echo 'if [ "$link" = yes ]; then'
-    printf '  exec "$cc_prefix/bin/clang" $base -fuse-ld=lld --ld-path="$cc_prefix/bin/ld64.lld" "$@" "$recaulk"%s\n' "$_cw_wlu"
+    printf '  exec "$cc_prefix/bin/clang" %s -fuse-ld=lld --ld-path="$cc_prefix/bin/ld64.lld" "$@" "$recaulk"%s\n' "$_cw_base" "$_cw_wlu"
     echo 'fi'
-    echo 'exec "$cc_prefix/bin/clang" $base "$@"'
+    printf 'exec "$cc_prefix/bin/clang" %s "$@"\n' "$_cw_base"
   } > "$1" || return 1
   chmod 755 "$1"
 }
