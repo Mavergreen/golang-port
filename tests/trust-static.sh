@@ -3,7 +3,7 @@
 # spec: PORT.md, the build chain -- the trust checks that need no Mac, for the lines' build job: the patched tree still carries the 10.9 and
 #       keychain-union fixes (source greps), crypto/x509 builds for each non-darwin GOOS (the overlay's !darwin stub), and on a
 #       non-darwin host the build-tag-free keychain-union and fallback tests pass. What needs darwin is in tests/on-target/run.sh.
-#       Without a built toolchain there is nothing to check: exit 77.
+#       With neither variable set there is nothing to check: exit 77. One set but naming no built go is a failure (exit 1).
 #       usage: sh tests/trust-static.sh            LINE_ROOT=<line checkout> finds the builder's $WORK/go (what make.bash built, patched)
 #              TRUST_STATIC_GOROOT=<goroot> sh tests/trust-static.sh      any built, patched Go tree
 set -u
@@ -13,7 +13,8 @@ if [ -z "$goroot" ] && [ -n "${LINE_ROOT:-}" ]; then
   PORT_DIR="$(cd "$here/.." && pwd)"; export PORT_DIR
   goroot="$(. "$PORT_DIR/build/env.sh" >/dev/null && printf '%s' "$WORK/go")" || { echo "env.sh failed for $LINE_ROOT" >&2; exit 1; }
 fi
-[ -n "$goroot" ] && [ -x "$goroot/bin/go" ] || { echo "no built toolchain (set TRUST_STATIC_GOROOT, or LINE_ROOT and run build-builder.sh) -- skipping"; exit 77; }
+[ -n "${TRUST_STATIC_GOROOT:-}" ] || [ -n "${LINE_ROOT:-}" ] || { echo "no toolchain named (set TRUST_STATIC_GOROOT, or LINE_ROOT after build-builder.sh) -- skipping"; exit 77; }
+[ -x "$goroot/bin/go" ] || { echo "FAIL: no built go at $goroot/bin/go (run build-builder.sh for LINE_ROOT, or point TRUST_STATIC_GOROOT at a built tree)"; exit 1; }
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/trust-static.XXXXXX")" || exit 1
 [ -d "$tmp" ] || exit 1
 trap 'rm -rf "$tmp"' EXIT

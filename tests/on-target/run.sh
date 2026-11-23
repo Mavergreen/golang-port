@@ -50,6 +50,8 @@ out="$(go test crypto/x509 -run 'KeychainUnion|Fallback|TestEnvVars|ColonSeparat
   || { printf '%s\n' "$out" | tail -40; bad "go test crypto/x509 failed"; }
 ot_check_output "crypto/x509 tests" "$out"
 printf '%s\n' "$out" | grep -q '^ok[[:space:]]' || bad "go test crypto/x509 did not report ok"
+failed="$(printf '%s\n' "$out" | grep -E '^[[:space:]]*--- FAIL: ' || true)"
+[ -z "$failed" ] || bad "tests failed on the target: $failed"
 # spec: on-target suite, check 2 -- patch 0018's four SKIPs are expected; any other skip is a test that did not run here
 skipped="$(printf '%s\n' "$out" | grep -E '^[[:space:]]*--- SKIP: ' \
   | grep -v -E '^--- SKIP: (TestEnvVars|TestLoadSystemCertsLoadColonSeparatedDirs|TestIssue51759|TestHybridPool) ' || true)"

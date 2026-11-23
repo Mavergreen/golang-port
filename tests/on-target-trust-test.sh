@@ -11,12 +11,12 @@ trap 'rm -rf "$t"' EXIT
 die() { echo "FAIL: $*"; exit 1; }
 
 # spec: tests/on-target-trust-test.sh -- the stub go: `go version` answers as go1.27 does on 10.9; `go test` prints $t/transcript; anything
-#       else succeeds silently
+#       else succeeds silently. `go test` exits $STUB_RC (default 0).
 mkdir -p "$t/goroot/bin" "$t/clang22/bin"
 cat > "$t/goroot/bin/go" <<EOF
 #!/bin/sh
 if [ "\$1" = version ]; then echo "go version go1.27.1 darwin/amd64"; exit 0; fi
-if [ "\$1" = test ]; then cat "$t/transcript"; exit 0; fi
+if [ "\$1" = test ]; then cat "$t/transcript"; exit "\${STUB_RC:-0}"; fi
 exit 0
 EOF
 for x in llvm-nm llvm-otool; do printf '#!/bin/sh\n' > "$t/clang22/bin/$x"; chmod +x "$t/clang22/bin/$x"; done
@@ -72,5 +72,14 @@ expect "wrong reason" 's/root_test.go:259: darwin: the keychain union serves/roo
   "TestLoadSystemCertsLoadColonSeparatedDirs skipped, but its reason is not patch 0018's"
 expect "reason without darwin:" 's/verify_test.go:1704: darwin: /verify_test.go:1704: /' "TestIssue51759 skipped, but its reason is not patch 0018's"
 expect "no ok line" '/^ok /d' "go test crypto/x509 did not report ok"
+STUB_RC=1; export STUB_RC
+expect "go test exits 1" '' "go test crypto/x509 failed"
+unset STUB_RC
+EXTRA='    --- FAIL: TestFallback/sub (0.00s)'
+expect "a FAIL line" '' "tests failed on the target"
+EXTRA=
+expect "reasons swapped" 's/root_test.go:129: darwin: .*/root_test.go:129: darwin: Go'"'"'s verifier over the keychain union is the default (PORT.md)/' \
+  "TestEnvVars skipped, but its reason is not patch 0018's"
+expect "a SKIP with no reason line" '/hybrid_pool_test.go:24:/d' "TestHybridPool skipped, but its reason is not patch 0018's"
 
 echo "PASS: on-target-trust"
