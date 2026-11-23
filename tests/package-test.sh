@@ -16,7 +16,9 @@ if [ -z "${SHIPYARD_SCRIPTS:-}" ]; then
   # shellcheck disable=SC1091
   SHIPYARD_SCRIPTS=$(. "$here/build/msc.sh" >/dev/null 2>&1 && echo "$SHIPYARD_SCRIPTS")
 fi
-[ -f "${SHIPYARD_SCRIPTS:-/nonexistent}/stage_product.sh" ] || { echo "no shipyard with stage_product.sh -- skipping"; exit 77; }
+for s in stage_product.sh stage_standalone.sh check-standalone-archive.sh; do
+  [ -f "${SHIPYARD_SCRIPTS:-/nonexistent}/$s" ] || { echo "no shipyard with $s -- skipping"; exit 77; }
+done
 export SHIPYARD_SCRIPTS
 sd=$(sh "$SHIPYARD_SCRIPTS/fetch_stevedore.sh" 2>"$t/sd.err") || { cat "$t/sd.err"; echo "no stevedore -- skipping"; exit 77; }
 
@@ -28,16 +30,45 @@ PORT_DIR="$here"; export PORT_DIR
 . "$here/build/env.sh" || exit $?
 
 mk() { mkdir -p "${1%/*}"; printf '#!/bin/sh\n' > "$1"; chmod 755 "$1"; }
+# spec: build/package.sh -- the archive's arch is read from the executables' Mach-O headers: a thin 64-bit header, cputype x86_64 or arm64
+macho() {
+  mkdir -p "${1%/*}"
+  case "$2" in
+    x86_64) printf '\317\372\355\376\007\000\000\001\003\000\000\000\002\000\000\000' > "$1" ;;
+    arm64) printf '\317\372\355\376\014\000\000\001\000\000\000\000\002\000\000\000' > "$1" ;;
+  esac
+  chmod 755 "$1"
+}
 n="$WORK/staging$PREFIX"; c="$WORK/staging-cross$CROSS_PREFIX"
-for f in bin/go bin/gofmt bin/mavericks-clang; do mk "$n/$f"; done
+for f in bin/go bin/gofmt pkg/tool/darwin_amd64/compile; do macho "$n/$f" x86_64; done
+mk "$n/bin/mavericks-clang"
 mkdir -p "$n/etc/openssl/certs"; : > "$n/etc/openssl/certs/ca-certificates.crt"; echo license > "$n/LICENSE"
-for f in bin/go bin/gofmt bin/mavericks-cross-clang; do mk "$c/$f"; done
+for f in bin/go bin/gofmt pkg/tool/darwin_arm64/compile; do macho "$c/$f" arm64; done
+mk "$c/bin/mavericks-cross-clang"
 ln -s ../sdk109/SDKs "$c/SDKs"
 : > "$n/._AppleDouble"
 mkdir -p "$WORK/cc"
 printf 'clang22=22.1.8-mavericks.99\nrecaulk=20261122.3\nsdk109=20261012.2\npins=lenient\n' > "$WORK/cc/versions"
 
-# spec: build/package.sh -- both pkgs build from a staged tree and print their paths
+# spec: tests/package-test.sh -- check-standalone-archive.sh reads every Mach-O with llvm tools: stubs that read the stub headers above, so
+#       this test needs no clang22. Each prints what llvm-otool would for a thin executable that loads only libSystem.
+L="$t/llvm"; mkdir -p "$L"
+cat > "$L/llvm-otool" <<'STUB'
+#!/bin/sh
+f=""; for a in "$@"; do f="$a"; done
+case "$(od -An -tx1 -j4 -N1 "$f" | tr -d ' ')" in 07) a=X86_64 ;; 0c) a=ARM64 ;; *) echo "not Mach-O: $f" >&2; exit 1 ;; esac
+case "$1" in
+  -hv) printf 'Mach header\n      magic  cputype cpusubtype  caps    filetype ncmds sizeofcmds      flags\nMH_MAGIC_64 %s ALL 0x00 EXECUTE 1 56 NOUNDEFS\n' "$a" ;;
+  -l) printf 'Load command 0\n          cmd LC_LOAD_DYLIB\n      cmdsize 56\n         name /usr/lib/libSystem.B.dylib (offset 24)\n' ;;
+esac
+STUB
+printf '#!/bin/sh\nexit 0\n' > "$L/llvm-nm"
+printf '#!/bin/sh\necho "stub $0: not used for thin files" >&2; exit 1\n' > "$L/llvm-lipo"
+cp "$L/llvm-lipo" "$L/llvm-ar"
+chmod 755 "$L"/llvm-*
+OTOOL="$L/llvm-otool"; LIPO="$L/llvm-lipo"; NM="$L/llvm-nm"; export OTOOL LIPO NM
+
+# spec: build/package.sh -- both pkgs build from a staged tree and print their paths: the standalone archive's, then the pkg's last
 sh "$here/build/package.sh" native > "$t/native.out" 2> "$t/native.err" || { cat "$t/native.err"; fail "native must package from a staged tree"; }
 sh "$here/build/package.sh" cross > "$t/cross.out" 2> "$t/cross.err" || { cat "$t/cross.err"; fail "cross must package from a staged tree"; }
 base="${PKG_VERSION#*-}"
@@ -46,6 +77,30 @@ np="$WORK/out/golang-$GO_VERSION-native-$base.pkg"; xp="$WORK/out/golang-$GO_VER
 [ "$(tail -1 "$t/native.out")" = "$np" ] || fail "native prints its pkg path last, got: $(tail -1 "$t/native.out")"
 [ "$(tail -1 "$t/cross.out")" = "$xp" ] || fail "cross prints its pkg path last"
 echo "ok: both packages built"
+
+# spec: build/package.sh -- the standalone archives, named for the arch read from the executables: x86_64 native, arm64 cross
+na="$WORK/out/go$GO_LINE-$PKG_VERSION-macos-x86_64.tar.gz"; xa="$WORK/out/go$GO_LINE-cross-$PKG_VERSION-macos-arm64.tar.gz"
+[ -f "$na" ] && [ -f "$xa" ] || fail "want $na and $xa; out has: $(ls "$WORK/out" | tr '\n' ' ')"
+[ "$(sed -n 1p "$t/native.out")" = "$na" ] || fail "native prints the archive's path before the pkg's, got: $(cat "$t/native.out")"
+[ "$(sed -n 1p "$t/cross.out")" = "$xa" ] || fail "cross prints the archive's path before the pkg's, got: $(cat "$t/cross.out")"
+grep -q 'check-standalone-archive: ok' "$t/native.err" || fail "native: the checker did not pass the archive: $(cat "$t/native.err")"
+grep -q 'check-standalone-archive: ok' "$t/cross.err" || fail "cross: the checker did not pass the archive"
+tar -tzf "$na" | sed 's#/$##' | LC_ALL=C sort > "$t/na.list"; tar -tzf "$xa" | sed 's#/$##' | LC_ALL=C sort > "$t/xa.list"
+top="go$GO_LINE-$PKG_VERSION"; xtop="go$GO_LINE-cross-$PKG_VERSION"
+grep -qx "$top/bin/go" "$t/na.list" || fail "native archive has no $top/bin/go: $(tr '\n' ' ' < "$t/na.list")"
+grep -qx "$top/etc/openssl/certs/ca-certificates.crt" "$t/na.list" || fail "native archive has no CA bundle"
+grep -qx "$xtop/bin/go" "$t/xa.list" || fail "cross archive has no $xtop/bin/go"
+grep -q 'mavergreen\.plist$' "$t/na.list" "$t/xa.list" && fail "an archive holds the pkg manifest"
+grep -qx "$xtop/SDKs" "$t/xa.list" && fail "the cross archive holds the SDKs link: sdk109 is a require, the wrapper finds the SDK"
+echo "ok: standalone archives"
+# spec: build/package.sh -- the pkg root keeps its SDKs link (the archive is staged from a filtered copy), and the copy is gone
+[ "$(readlink "$WORK/pkgroot-cross$CROSS_PREFIX/SDKs")" = ../sdk109/SDKs ] || fail "package.sh dropped SDKs from the cross pkg root"
+[ ! -e "$WORK/standalone-cross" ] || fail "package.sh left its filtered copy at $WORK/standalone-cross"
+for v in native cross; do
+  case "$v" in native) w=x86_64 ;; *) w=arm64 ;; esac
+  grep -qx "arch=$w" "$WORK/out/build-info-$v.txt" || fail "build-info-$v.txt: arch=$w, read from the executables"
+done
+echo "ok: pkg root unchanged"
 
 # spec: build/package.sh -- the staging is left as build-native.sh made it (the manifest is written into a copy)
 [ ! -e "$n/mavergreen.plist" ] && [ ! -e "$WORK/staging/usr/local/mavergreen/go$GO_LINE/mavergreen.plist" ] || fail "package.sh wrote into the staging"
@@ -83,6 +138,7 @@ grep -qx 'clang22' "$t/rn" || fail "native pkg must require clang22, requires: $
 grep -qx 'clang22-cross' "$t/rx" || fail "cross pkg must require clang22-cross, requires: $(tr '\n' ' ' < "$t/rx")"
 grep -qx 'longboat>=20261019.1' "$t/rx" || fail "cross pkg must require longboat>=20261019.1, requires: $(tr '\n' ' ' < "$t/rx")"
 grep -qx 'sdk109' "$t/rx" || fail "cross pkg must require sdk109, requires: $(tr '\n' ' ' < "$t/rx")"
+grep -qx 'sdk109' "$t/rn" || fail "native pkg must require sdk109 (its wrapper names it), requires: $(tr '\n' ' ' < "$t/rn")"
 grep -q 'clang22-cross' "$t/rn" && fail "native pkg must not require clang22-cross"
 echo "ok: requires"
 for p in xn xx; do
@@ -130,4 +186,15 @@ for v in native cross; do
   grep -qx "go_version=$GO_VERSION" "$f" || fail "$f: go_version"
   grep -qx "port_version=$(tr -d "[:space:]" < "$here/UPSTREAM_VERSION")" "$f" || fail "$f: port_version (the port's UPSTREAM_VERSION)"
 done
+
+# spec: build/package.sh -- refusals: a toolchain of two arches, and an archive the checker refuses, fail the package
+macho "$n/pkg/tool/darwin_amd64/link" arm64
+sh "$here/build/package.sh" native > "$t/mixed.out" 2> "$t/mixed.err" && fail "native packaged a toolchain whose executables are two arches"
+grep -q 'both x86_64 and arm64' "$t/mixed.err" || fail "the two-arch refusal names both: $(cat "$t/mixed.err")"
+rm -f "$n/pkg/tool/darwin_amd64/link"
+printf '#!/bin/sh\nexec /usr/local/mavergreen/go%s/bin/go "$@"\n' "$GO_LINE" > "$n/bin/self"; chmod 755 "$n/bin/self"
+sh "$here/build/package.sh" native > "$t/self.out" 2> "$t/self.err" && fail "native packaged an archive whose script names its own prefix"
+grep -q 'self-reference' "$t/self.err" || fail "the checker's finding is shown: $(cat "$t/self.err")"
+grep -q 'check-standalone-archive.sh refused' "$t/self.err" || fail "package.sh says the checker refused: $(cat "$t/self.err")"
+echo "ok: refusals"
 echo "PASS: package"
