@@ -12,7 +12,8 @@ tb="${LINUX_CROSS_TARBALL:-}"
 t=$(mktemp -d "${TMPDIR:-/tmp}/linux-cross-test.XXXXXX") || exit 1
 [ -d "$t" ] || exit 1
 trap 'rm -rf "$t"' EXIT
-t=$(cd "$t" && pwd)
+# spec: build/build-linux-cross.sh -- spelled physically: product-tar.py refuses a destination below a symlink (a Mac's /var is one)
+t=$(cd "$t" && pwd -P)
 fail() { echo "FAIL: $*"; exit 1; }
 
 base=${tb##*/}
@@ -25,7 +26,7 @@ p="opt/mavergreen/$root"
 # spec: build/build-linux-cross.sh -- every entry is under opt/mavergreen/go1NN-cross (or is one of its two parent directories): the one
 #       prefix shipyard's product-tar.py accepts. Nothing for the host's own toolchain in pkg/tool.
 tar -tzf "$tb" > "$t/list" || fail "cannot list $tb"
-stray=$(sed 's|/$||' "$t/list" | grep -v -x -e opt -e opt/mavergreen -e "$p" | grep -v "^$p/" || true)
+stray=$(sed 's|/$||' "$t/list" | awk -v p="$p" '$0 != "opt" && $0 != "opt/mavergreen" && $0 != p && index($0, p "/") != 1')
 [ -z "$stray" ] || fail "entries outside $p/: $(printf '%s' "$stray" | head -5 | tr '\n' ' ')"
 grep -q "^$p/pkg/tool/darwin_" "$t/list" && fail "pkg/tool/darwin_* is in the archive"
 grep -q "^$p/pkg/tool/linux_amd64/link$" "$t/list" || fail "no pkg/tool/linux_amd64/link in the archive"
