@@ -50,6 +50,9 @@ CLANG_HAVE="$CP_HAVE"
 # spec: PORT.md, the build chain -- the installed SDK's version is not pinned by the line, only its presence.
 SDK109="$MG/sdk109/SDKs/MacOSX10.9.sdk"
 [ -d "$SDK109" ] || refuse "sdk109 is not installed: no $SDK109. Install it: macOS: sudo longboat sdk install 10.9; Linux: list sdk109@<any release> under install@v1 products:"
+# spec: PORT.md, the build chain -- an SDK without SDKSettings.json (sdk109 from Longboat before 20261027) makes clang22 write "sdk n/a" into
+#       every C object's build-version command, so cgo's bytes and every downstream Go build ID differ from CI's: refuse it, naming the fix.
+[ -f "$SDK109/SDKSettings.json" ] || refuse "sdk109 at $SDK109 has no SDKSettings.json, so its C objects would differ from CI's. Reinstall it: macOS: sudo longboat sdk install 10.9 with a current Longboat; Linux: list sdk109@<latest release> under install@v1 products:"
 
 RECAULK_LIB="$MG/recaulk/lib/librecaulk.a"
 check_product recaulk "$MG/recaulk" "$RECAULK_VERSION" \

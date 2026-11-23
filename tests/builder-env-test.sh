@@ -18,6 +18,7 @@ hasnt() { grep -q -- "$2" "$1" && fail "$3: did not want '$2' in: $(cat "$1")"; 
 want_clang=22.1.8-mavericks.25
 P="$t/mg"
 mkdir -p "$P/clang22/bin" "$P/sdk109/SDKs/MacOSX10.9.sdk" "$P/recaulk/lib"
+echo '{}' > "$P/sdk109/SDKs/MacOSX10.9.sdk/SDKSettings.json"
 printf '#!/bin/sh\necho "Non-fat file: $2 is architecture: x86_64"\n' > "$P/clang22/bin/llvm-lipo"
 for x in llvm-strip dsymutil llvm-ar; do printf "#!/bin/sh\n" > "$P/clang22/bin/$x"; done
 chmod +x "$P/clang22/bin/llvm-lipo" "$P/clang22/bin/llvm-strip" "$P/clang22/bin/dsymutil" "$P/clang22/bin/llvm-ar"

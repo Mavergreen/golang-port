@@ -35,6 +35,7 @@ PL
 mkprefix() {
   p=$1; c=${2:-clang22}
   mkdir -p "$p/$c/bin" "$p/sdk109/SDKs/MacOSX10.9.sdk" "$p/recaulk/lib"
+  echo '{}' > "$p/sdk109/SDKs/MacOSX10.9.sdk/SDKSettings.json"
   printf '#!/bin/sh\necho "$0 $*"\n' > "$p/$c/bin/clang"
   printf '#!/bin/sh\necho "Non-fat file: $2 is architecture: x86_64"\n' > "$p/$c/bin/llvm-lipo"
   for x in llvm-strip dsymutil llvm-ar; do printf '#!/bin/sh\n' > "$p/$c/bin/$x"; chmod +x "$p/$c/bin/$x"; done
@@ -118,6 +119,11 @@ Q="$t/mg-nosdk"; mkprefix "$Q"; rm -rf "$Q/sdk109/SDKs"
 run "$Q"
 [ "$rc" = 1 ] || fail "missing sdk109: exit $rc"
 has "$t/err" sdk109 "missing sdk109"; has "$t/err" "longboat sdk install 10.9" "missing sdk109"
+# spec: build/c-toolchain.sh -- an SDK without SDKSettings.json (an old Longboat's) changes C objects' bytes, so it refuses
+Q="$t/mg-nosettings"; mkprefix "$Q"; rm -f "$Q/sdk109/SDKs/MacOSX10.9.sdk/SDKSettings.json"
+run "$Q"
+[ "$rc" = 1 ] || fail "sdk109 without SDKSettings.json: exit $rc"
+has "$t/err" SDKSettings.json "sdk109 without SDKSettings.json"; has "$t/err" "longboat sdk install 10.9" "sdk109 without SDKSettings.json"
 Q="$t/mg-noclang"; mkprefix "$Q"; rm -rf "$Q/clang22"
 run "$Q"
 [ "$rc" = 1 ] || fail "missing clang22: exit $rc"
