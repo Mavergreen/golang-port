@@ -286,6 +286,24 @@ Rules the chain keeps and differences a reader will notice; none is a regression
   Its contents are identical whichever host built it, but its `.tar.gz` bytes differ per host (the gzip implementation), so
   compare trees, not archives. Its `go.env` names `CC=bin/mavericks-cross-clang`, which patch 0020 resolves against GOROOT, so it
   works unpacked anywhere with no `CC` set (`tests/linux-cross-test.sh` builds cgo from a copy at a path with a space).
+- **The standalone archive** (`go1NN-<version>-macos-x86_64.tar.gz`, `go1NN-cross-<version>-macos-arm64.tar.gz`) ships beside
+  each pkg: one build, two forms. `build/package.sh` runs shipyard's `stage_standalone.sh` on the pkg root `stage_product.sh`
+  filled, so the archive is the product's tree as the pkg installs it, under one top directory `go1NN[-cross]-<version>/`,
+  without the manifest, the updater or the install scripts. Its arch is read from the Mach-O headers in `bin/` and `pkg/tool/`,
+  never assumed (native x86_64, cross arm64), and a toolchain of two arches refuses. The cross tree's `SDKs -> ../sdk109/SDKs`
+  link stays the pkg's alone: package.sh stages the cross archive from a copy of the product tree without it, so the pkg root
+  is left as it was. sdk109 is a declared require, and the wrapper finds the SDK itself. `check-standalone-archive.sh --plist`
+  against the staged manifest must pass, or package.sh fails. That check lets a script name `/usr/local/mavergreen/<require>`,
+  so both pkgs declare everything their wrappers name: clang22 (clang22-cross for cross) and sdk109. Standalone means nothing
+  installs the toolchain itself; clang22 and sdk109 stay dependencies, at the family prefix or at the `MAVERGREEN_*` overrides.
+  package.sh prints the archive's path, then the pkg's last. `tests/standalone-smoke.sh ARCHIVE` unpacks it under a directory
+  with a space and checks that `go env GOROOT` and `go env CC` name the unpacked copy. It then builds a pure-Go and a cgo hello
+  through that copy's wrapper, each x86_64 and minos 10.9; they run on an x86_64 host and are only inspected on an arm64 one.
+  The lines' on-target job runs it on the native archive, and modern-smoke on the cross archive. Without an archive, or on a
+  host that cannot run its arch, it skips (77). *Open:* the checker refuses `src/crypto/x509/root_keychainunion_darwin.go` and
+  its test, because they name the CA-bundle defaults of invariant 7 (`/usr/local/mavergreen/ca-certs/...` and this line's
+  `@SSLDIR@`, which is `/usr/local/mavergreen/go1NN/etc/openssl`). Those paths are where a built program looks on the machine
+  it runs on, not paths the toolchain needs, so this awaits shipyard's ruling (queued).
 - **Linux installs the C toolchain with install@v1 `products:`**, the same as a Mac: `clang22@<version> sdk109@<tag>
   recaulk@<version>` (pins from the line's `components/*/version`), each at its pkg's prefix with that pkg's `mavergreen.plist`
   (shipyard 1.0.822 and later). The port carries no installer of its own; the refusals in `build/c-toolchain.sh` and the
@@ -301,7 +319,7 @@ Rules the chain keeps and differences a reader will notice; none is a regression
   guest: >=27 `KeychainUnion` passes, `TestFallback`, `TestFallbackPanic`, `TestSSLCertEnvOverride`, patch 0018's four skips with
   their reasons, and no other skip. Together they assert everything the lines' macOS-runner `tests/trust/unit-trust.sh` did.
   *Reconsider:* if a line builds on a macOS runner again.
-- **Tests that need a built product skip (77) without one** (`cross-vet.sh`, `trust-static.sh`, `linux-cross-test.sh`, `updater-test.sh`,
+- **Tests that need a built product skip (77) without one** (`cross-vet.sh`, `trust-static.sh`, `linux-cross-test.sh`, `standalone-smoke.sh`, `updater-test.sh`,
   `compat-guard.sh` without binaries). `tests/on-target/run.sh` is the other direction: it runs in the 10.9 guest against the
   installed toolchain and never skips.
 

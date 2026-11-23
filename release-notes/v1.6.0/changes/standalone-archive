@@ -1,0 +1,1 @@
+Each Go toolchain package now comes with a Mac archive of the same toolchain that works from any folder it is unpacked into, with no updater and no installer.
