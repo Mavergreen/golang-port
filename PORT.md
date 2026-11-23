@@ -300,12 +300,15 @@ Rules the chain keeps and differences a reader will notice; none is a regression
   with a space and checks that `go env GOROOT` and `go env CC` name the unpacked copy. It then builds a pure-Go and a cgo hello
   through that copy's wrapper, each x86_64 and minos 10.9; they run on an x86_64 host and are only inspected on an arm64 one.
   The lines' on-target job runs it on the native archive, and modern-smoke on the cross archive. Without an archive, or on a
-  host that cannot run its arch, it skips (77). `src/crypto/x509/root_keychainunion_darwin.go` and its test name the CA-bundle
-  defaults of invariant 7: `/usr/local/mavergreen/ca-certs/...`, and `@SSLDIR@`, which is `/usr/local/mavergreen/go1NN/etc/openssl`.
-  Those are where a built program looks on the machine it runs on; the toolchain never reads them. Each line therefore declares
+  host that cannot run its arch, it skips (77). `src/crypto/x509/root_keychainunion_darwin.go` and its test name the
+  CA-bundle defaults of invariant 7: `/usr/local/mavergreen/ca-certs/...`, and `@SSLDIR@`, which is
+  `/usr/local/mavergreen/go1NN/etc/openssl`. Those are where a built program looks on the machine it runs on; the toolchain
+  never reads them. Each line therefore declares
   `- standalone-text:src/crypto/x509/root_keychainunion_darwin*.go: <reason>` under its INGREDIENTS.md `## Conformance
   deviations` (shipyard 1.0.845 and later), and package.sh hands the checker that file with `--repo "$LINE_ROOT"`. The check
-  runs after `build_component_pkg.sh` normalises the root's modes, so the archive's modes are the pkg's.
+  runs after `build_component_pkg.sh` normalises the root's modes, so the archive's modes are the pkg's. The pkg root and the
+  cross archive's filtered copy are made with `cp -pRP`, never an unpacking tar, so the packager's umask changes no mode, and
+  a trap removes the filtered copy even when `stage_standalone.sh` fails.
 - **Modes do not depend on how the port arrived.** `apply-overlay.sh` writes every overlay file 0644: a port unpacked from a
   `git archive` as root keeps 0664, and shipyard's build-equivalence (1.0.845 and later) compares modes across hosts
   (`tests/apply-overlay-test.sh`).
@@ -324,9 +327,9 @@ Rules the chain keeps and differences a reader will notice; none is a regression
   guest: >=27 `KeychainUnion` passes, `TestFallback`, `TestFallbackPanic`, `TestSSLCertEnvOverride`, patch 0018's four skips with
   their reasons, and no other skip. Together they assert everything the lines' macOS-runner `tests/trust/unit-trust.sh` did.
   *Reconsider:* if a line builds on a macOS runner again.
-- **Tests that need a built product skip (77) without one** (`cross-vet.sh`, `trust-static.sh`, `linux-cross-test.sh`, `standalone-smoke.sh`, `updater-test.sh`,
-  `compat-guard.sh` without binaries). `tests/on-target/run.sh` is the other direction: it runs in the 10.9 guest against the
-  installed toolchain and never skips.
+- **Tests that need a built product skip (77) without one** (`cross-vet.sh`, `trust-static.sh`, `linux-cross-test.sh`,
+  `standalone-smoke.sh`, `updater-test.sh`, `compat-guard.sh` without binaries). `tests/on-target/run.sh` is the other
+  direction: it runs in the 10.9 guest against the installed toolchain and never skips.
 
 *Reconsider:* each bullet when the rule it states stops holding; the byte-reference rule when the family has a `clang22` for
 Apple Silicon.

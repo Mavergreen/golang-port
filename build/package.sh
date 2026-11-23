@@ -74,7 +74,8 @@ done
 root="$WORK/pkgroot-$variant"
 rm -rf "$root"
 mkdir -p "$root"
-( cd "$src" && tar -cf - . ) | ( cd "$root" && tar -xf - )
+# spec: build/package.sh -- cp -p, not an unpacking tar: the pkg's modes are the staging's, whatever this shell's umask
+cp -pRP "$src/." "$root/"
 find "$root" -name '._*' -exec rm -rf {} + 2>/dev/null || true
 
 # spec: PORT.md, the build chain -- the shipped wrappers call clang22 (clang22-cross for the cross pkg) against sdk109's 10.9 SDK, so the
@@ -129,13 +130,17 @@ if [ "$variant" = native ]; then
   saroot="$root"
 else
   saroot="$WORK/standalone-$variant"
+  # spec: build/package.sh -- the filtered copy never outlives this run, whether stage_standalone.sh succeeds or not
+  trap 'rm -rf "$saroot"' EXIT
+  trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
   rm -rf "$saroot"
   mkdir -p "$saroot$prefix"
-  ( cd "$root$prefix" && tar -cf - . ) | ( cd "$saroot$prefix" && tar -xf - )
+  # spec: build/package.sh -- cp -p keeps the normalised modes build_component_pkg.sh gave the root; an unpacking tar would apply this umask
+  cp -pRP "$root$prefix/." "$saroot$prefix/"
   rm -f "$saroot$prefix/SDKs"
 fi
 sh "$SHIPYARD_SCRIPTS/stage_standalone.sh" "$saroot" "$product" "$PKG_VERSION" "$arch" "$archive" >&2
-[ "$saroot" = "$root" ] || rm -rf "$saroot"
+if [ "$saroot" != "$root" ]; then rm -rf "$saroot"; trap - EXIT HUP INT TERM; fi
 sh "$SHIPYARD_SCRIPTS/check-standalone-archive.sh" --plist "$root$prefix/mavergreen.plist" --repo "$LINE_ROOT" "$archive" >&2 \
   || die "check-standalone-archive.sh refused $archive"
 

@@ -16,8 +16,23 @@ if [ -z "${SHIPYARD_SCRIPTS:-}" ]; then
   # shellcheck disable=SC1091
   SHIPYARD_SCRIPTS=$(. "$here/build/msc.sh" >/dev/null 2>&1 && echo "$SHIPYARD_SCRIPTS")
 fi
-for s in stage_product.sh stage_standalone.sh check-standalone-archive.sh; do
-  [ -f "${SHIPYARD_SCRIPTS:-/nonexistent}/$s" ] || { echo "no shipyard with $s -- skipping"; exit 77; }
+[ -f "${SHIPYARD_SCRIPTS:-/nonexistent}/stage_product.sh" ] || { echo "no shipyard with stage_product.sh -- skipping"; exit 77; }
+# spec: tests/package-test.sh -- an older shipyard may lack the standalone seams and skips; one that says it is 1.0.845 or later
+#       (its installed MavericksShipyardConfigVersion.cmake, else SHIPYARD_VERSION, as build-base-component.sh reads it) must have them
+sv=""
+if [ -f "$SHIPYARD_SCRIPTS/../MavericksShipyardConfigVersion.cmake" ]; then
+  sv="$(sed -n 's/.*set(PACKAGE_VERSION "\([^"]*\)").*/\1/p' "$SHIPYARD_SCRIPTS/../MavericksShipyardConfigVersion.cmake" | head -1)"
+fi
+[ -n "$sv" ] || sv="${SHIPYARD_VERSION:-}"
+new_enough=no
+case "$sv" in
+  ''|.*|*.|*..*|*[!0-9.]*) ;;
+  *) [ "$(awk -v a="$sv" 'BEGIN { split(a, v, "."); print (v[1] * 1000000 + v[2] * 1000 + v[3] >= 1000845) ? "yes" : "no" }')" = yes ] && new_enough=yes ;;
+esac
+for s in stage_standalone.sh check-standalone-archive.sh; do
+  [ -f "$SHIPYARD_SCRIPTS/$s" ] && continue
+  [ "$new_enough" = no ] || { echo "FAIL: shipyard $sv at $SHIPYARD_SCRIPTS has no $s, which 1.0.845 and later ship"; exit 1; }
+  echo "no shipyard with $s (shipyard ${sv:-of unknown version}, older than 1.0.845) -- skipping"; exit 77
 done
 export SHIPYARD_SCRIPTS
 sd=$(sh "$SHIPYARD_SCRIPTS/fetch_stevedore.sh" 2>"$t/sd.err") || { cat "$t/sd.err"; echo "no stevedore -- skipping"; exit 77; }
@@ -201,6 +216,21 @@ for v in native cross; do
   grep -qx "go_version=$GO_VERSION" "$f" || fail "$f: go_version"
   grep -qx "port_version=$(tr -d "[:space:]" < "$here/UPSTREAM_VERSION")" "$f" || fail "$f: port_version (the port's UPSTREAM_VERSION)"
 done
+
+# spec: build/package.sh -- the pkg root and the cross archive's filtered copy keep the staging's modes under any umask (an unpacking tar
+#       would have made them 0700 here), and the filtered copy is gone
+(umask 077 && sh "$here/build/package.sh" cross) > "$t/u77.out" 2> "$t/u77.err" || { cat "$t/u77.err"; fail "cross must package under umask 077"; }
+m="$(tar -tvzf "$xa" | awk -v p="$xtop/bin/go" '$NF == p { print $1 }')"
+[ "$m" = -rwxr-xr-x ] || fail "under umask 077 the cross archive's bin/go is '$m', want -rwxr-xr-x"
+[ ! -e "$WORK/standalone-cross" ] || fail "package.sh left its filtered copy at $WORK/standalone-cross"
+echo "ok: modes kept under umask 077"
+# spec: build/package.sh -- a failed stage_standalone.sh leaves no filtered copy behind
+mkdir "$t/ship"; cp -R "$SHIPYARD_SCRIPTS"/. "$t/ship/"
+printf '#!/bin/sh\necho "stage_standalone: stub failure" >&2\nexit 1\n' > "$t/ship/stage_standalone.sh"
+SHIPYARD_SCRIPTS="$t/ship" sh "$here/build/package.sh" cross > "$t/sf.out" 2> "$t/sf.err" && fail "cross packaged although stage_standalone.sh failed"
+grep -q 'stub failure' "$t/sf.err" || fail "the stub stage_standalone.sh did not run: $(tail -5 "$t/sf.err")"
+[ ! -e "$WORK/standalone-cross" ] || fail "a failed stage_standalone.sh left the filtered copy at $WORK/standalone-cross"
+echo "ok: a failed stage_standalone leaves no copy"
 
 # spec: build/package.sh -- refusals: a toolchain of two arches, and an archive the checker refuses, fail the package
 macho "$n/pkg/tool/darwin_amd64/link" arm64
