@@ -73,10 +73,29 @@ export CROSS_MIN_OS CA_SHA256
 # spec: PORT.md, the build chain -- a family checkout may live on NFS, where a build cost 11.16s wall / 25% CPU against 2.96s / 88% on local
 #       disk, with identical user time -- the whole difference is I/O wait.
 : "${MAVERICKS_BUILD_ROOT:=${TMPDIR:-/tmp}/mm-build}"
+# spec: PORT.md, the build chain -- the work paths are spelled clean: one slash between parts, no ./ part, no trailing slash. A Mac's TMPDIR
+#       ends in a slash, so the default root was .../T//mm-build. cmd/go cleans GOROOT for its C prefix map but hands clang the
+#       unclean spelling, so runtime/cgo's DWARF kept the work path, and every darwin/amd64 binary's build ID changed with it.
+_env_clean() {
+  printf '%s\n' "$1" | sed -e 's#//*#/#g' -e ':a' -e 's#/\./#/#' -e 'ta' -e 's#/\.$##' -e 's#\(.\)/$#\1#'
+}
+# spec: PORT.md, the build chain -- a relative work path, or one with a .. part, refuses: cmd/go would resolve either into another spelling.
+_env_path() {
+  case "$2" in
+    /*) ;;
+    *) echo "env.sh: $1=$2 is not an absolute path" >&2; return 2 ;;
+  esac
+  case "$2/" in
+    */../*) echo "env.sh: $1=$2 has a .. part; spell it without one" >&2; return 2 ;;
+  esac
+  _env_clean "$2"
+}
+MAVERICKS_BUILD_ROOT="$(_env_path MAVERICKS_BUILD_ROOT "$MAVERICKS_BUILD_ROOT")" || exit 2
 export MAVERICKS_BUILD_ROOT
 # spec: PORT.md, the build chain -- MAVERICKS_WORK still wins when set (a private work dir never clobbers edits); MAVERICKS_BUILD_ROOT="$PWD"
 #       is the deliberate in-tree escape hatch.
-export WORK="${MAVERICKS_WORK:-$MAVERICKS_BUILD_ROOT/golang-go$GO_LINE}"
+WORK="$(_env_path MAVERICKS_WORK "${MAVERICKS_WORK:-$MAVERICKS_BUILD_ROOT/golang-go$GO_LINE}")" || exit 2
+export WORK
 
 export PREFIX="/usr/local/mavergreen/go${GO_LINE}"
 export MACOS_MIN="10.9"

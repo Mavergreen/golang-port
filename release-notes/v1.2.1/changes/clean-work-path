@@ -1,0 +1,1 @@
+A Mac and a Linux machine now build the same Go for Mavericks byte for byte, wherever each keeps its build folder.

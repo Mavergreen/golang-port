@@ -43,7 +43,7 @@ check_line() {
   want "line $line" "CA_URL=https://curl.se/ca/cacert.pem"
   want "line $line" "WLU_SYMS=_xpc_date_create_from_current"
   want "line $line" "PKG_VERSION=$ver-mavericks.1"
-  want "line $line" "WORK=${MAVERICKS_BUILD_ROOT:-${TMPDIR:-/tmp}/mm-build}/golang-go$line"
+  want "line $line" "WORK=$(printf '%s' "${MAVERICKS_BUILD_ROOT:-${TMPDIR:-/tmp}/mm-build}/golang-go$line" | sed -e 's#//*#/#g')"
 }
 
 # spec: build/env.sh -- expect_fail <want-rc> <name> <must-match>... ; runs env_of on $root with $pre as extra env
@@ -109,5 +109,23 @@ expect_fail 1 "empty fallback" "$t/auto" "no package version" "version.sh"
 cp -R "$here/tests/fixtures/line-127" "$t/noenv"
 rm "$t/noenv/line.env"
 expect_fail 1 "missing line.env" "$t/noenv" "line.env"
+
+# spec: build/env.sh -- the work paths are spelled clean (PORT.md, Fixed C-toolchain paths): an unclean GOROOT changes darwin/amd64 build IDs
+work_of() { env_of "$here/tests/fixtures/line-127" | sed -n 's/^WORK=//p'; }
+for case in "/a//b/|/a/b/golang-go127" "/a/./b/.|/a/b/golang-go127" "///a///|/a/golang-go127" "/|/golang-go127"; do
+  got=$(MAVERICKS_BUILD_ROOT="${case%%|*}"; unset MAVERICKS_WORK; export MAVERICKS_BUILD_ROOT; work_of 2>"$t/err") || fail "root ${case%%|*}: $(cat "$t/err")"
+  [ "$got" = "${case#*|}" ] || fail "MAVERICKS_BUILD_ROOT=${case%%|*}: WORK=$got, want ${case#*|}"
+done
+got=$(MAVERICKS_WORK="/w//x/./y/"; export MAVERICKS_WORK; work_of 2>"$t/err") || fail "MAVERICKS_WORK /w//x/./y/: $(cat "$t/err")"
+[ "$got" = /w/x/y ] || fail "MAVERICKS_WORK=/w//x/./y/: WORK=$got, want /w/x/y"
+got=$(MAVERICKS_BUILD_ROOT=/r; MAVERICKS_WORK=/a/b..c/.d; export MAVERICKS_BUILD_ROOT MAVERICKS_WORK; work_of 2>"$t/err") || fail "dotted names: $(cat "$t/err")"
+[ "$got" = /a/b..c/.d ] || fail "MAVERICKS_WORK=/a/b..c/.d: WORK=$got, want it unchanged"
+# spec: build/env.sh -- a relative work path, or one with a .. part, exits 2 naming the variable
+for bad in "MAVERICKS_BUILD_ROOT=rel/root" "MAVERICKS_BUILD_ROOT=/a/../b" "MAVERICKS_WORK=w" "MAVERICKS_WORK=/a/b/.."; do
+  rc=0
+  ( unset MAVERICKS_WORK; export "${bad?}"; env_of "$here/tests/fixtures/line-127" ) >"$t/out" 2>&1 || rc=$?
+  [ "$rc" = 2 ] || fail "$bad: exit $rc, want 2: $(cat "$t/out")"
+  grep -q "${bad%%=*}" "$t/out" || fail "$bad: message lacks ${bad%%=*}: $(cat "$t/out")"
+done
 
 echo "ok: env-test"

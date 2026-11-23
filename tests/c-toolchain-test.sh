@@ -5,6 +5,8 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 ls -d "$here"/tests/fixtures/line-* >/dev/null 2>&1 || { echo "skip: no tests/fixtures/line-* (run from the tarball); this test needs the line fixtures"; exit 77; }
 t=$(mktemp -d "${TMPDIR:-/tmp}/c-toolchain-test.XXXXXX") || exit 1
 [ -d "$t" ] || exit 1
+# spec: build/env.sh -- WORK comes back spelled clean, so the paths compared here are spelled clean too (a Mac's TMPDIR ends in a slash)
+t=$(cd "$t" && pwd -P) || exit 1
 trap 'rm -rf "$t"' EXIT
 
 fail() { echo "FAIL: $*"; exit 1; }

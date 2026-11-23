@@ -215,6 +215,9 @@ at the family's installed prefixes: `/usr/local/mavergreen/clang22`, `/usr/local
 `/usr/local/mavergreen/recaulk`, and the products' own `/usr/local/mavergreen/go1NN` and `go1NN-cross`. On Linux,
 `build/provision-linux.sh` puts each at its pkg's prefix until install@v1 `products:` can (below). `build/c-toolchain.sh` checks each against the line's pin
 (`components/<name>/version`) and writes the build wrapper `$WORK/cc/bin/clang`; nothing falls back to a cache path.
+The wrapper may sit anywhere because Go reaches it by the bare name `clang` on `PATH`, but `build/env.sh` spells `$WORK` clean (one
+slash between parts, no `./`, no trailing slash; relative or `..` refuses), since an unclean GOROOT leaves the work path in
+`runtime/cgo` and so changes every darwin/amd64 build ID (`tests/work-path-test.sh`).
 *Why:* a path that differs per host changes build IDs, hence bytes. *Invariant:* the paths are derived from the line
 (`/usr/local/mavergreen/go${GO_LINE}`), never spelled per line (`tests/prefix-check.sh`); the build is Rosetta-free
 (`tests/rosetta-free-guard.sh`); the cross toolchain ships no SDK fetcher (`tests/no-sdk-fetcher-test.sh`). *Reconsider:* if
