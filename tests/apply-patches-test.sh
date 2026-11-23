@@ -13,11 +13,17 @@ fail() { echo "FAIL: $*"; exit 1; }
 [ -n "${SHIPYARD_SCRIPTS:-}" ] && [ -d "$SHIPYARD_SCRIPTS" ] || { mkdir "$t/ship"; SHIPYARD_SCRIPTS="$t/ship"; }
 export SHIPYARD_SCRIPTS
 
-# spec: tests/apply-patches-test.sh -- mkgo <dir>: a fake Go tree with the file the fixture hook edits
+# spec: tests/apply-patches-test.sh -- mkgo <dir>: a fake Go tree with the file the fixture hook edits, and each file a port patch
+#       edits holding that patch's own context lines (its pre-image), so the port's real patches apply here
 mkgo() {
   mkdir -p "$1/src/crypto/x509"
   : > "$1/src/make.bash"
   printf 'package x509\n\nfunc loadSystemRoots() {}\n' > "$1/src/crypto/x509/root.go"
+  for _p in "$here"/patches/*.patch; do
+    _f=$(sed -n 's/^+++ \([^	]*\).*$/\1/p' "$_p" | sed -n 1p)
+    mkdir -p "$(dirname "$1/$_f")"
+    awk '/^\+\+\+ /{h=1; next} h && /^[ -]/{print substr($0, 2)} h && /^$/{print ""}' "$_p" > "$1/$_f"
+  done
 }
 
 # spec: build/apply-patches.sh -- run <line> <work>: runs the script on a copy of the fixture line; output in $t/out
@@ -34,6 +40,8 @@ for line in line-126 line-127; do
   for f in root_keychainunion.go root_keychainunion_darwin.go root_keychainunion_darwin_test.go root_keychainunion_other.go root_keychainunion_test.go testdata/keychainunion-isrgrootx1-chain.pem; do
     [ -f "$w/go/$x/$f" ] || fail "$line: overlay file $f missing"
   done
+  grep -q 'func gorootRelativeCC' "$w/go/src/cmd/go/internal/cfg/cfg.go" || fail "$line: port patch 0020 not applied"
+  grep -q "the port's patches" "$t/out" || fail "$line: the port's patches are not reported: $(cat "$t/out")"
   if grep -r '@SSLDIR@' "$w/go/src" >/dev/null; then fail "$line: @SSLDIR@ survives"; fi
   grep -q "/usr/local/mavergreen/go${line#line-}/etc/openssl/certs/ca-certificates.crt" "$w/go/$x/root_keychainunion_darwin.go" \
     || fail "$line: CA path not baked into root_keychainunion_darwin.go"

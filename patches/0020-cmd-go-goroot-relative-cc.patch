@@ -1,0 +1,53 @@
+Resolve a relative CC or CXX in $GOROOT/go.env against GOROOT. The toolchains' go.env names their
+own C compiler wrapper (CC=bin/mavericks-clang, bin/mavericks-cross-clang), and Go does not expand
+go.env values: with an absolute prefix there, a toolchain copied or unpacked anywhere else execs a
+path that does not exist, and every darwin link is external. Only a value read from GOROOT/go.env
+whose command is relative and has a separator changes; the environment, the user's go env -w file,
+absolute paths and bare names (a PATH lookup) are untouched. Upstreamable: go env -w already
+refuses that shape as relative, so no existing go.env means anything else by it.
+
+--- src/cmd/go/internal/cfg/cfg.go.orig
++++ src/cmd/go/internal/cfg/cfg.go
+@@ -25,6 +25,7 @@
+ 
+ 	"cmd/go/internal/fsys"
+ 	"cmd/internal/pathcache"
++	"cmd/internal/quoted"
+ )
+ 
+ // Global build parameters (used during package load)
+@@ -408,6 +409,7 @@
+ 		key, val := line[:i], line[i+1:]
+ 
+ 		if source == "GOROOT" {
++			val = []byte(gorootRelativeCC(filepath.Dir(file), string(key), string(val)))
+ 			envCache.goroot[string(key)] = string(val)
+ 			// In the GOROOT/go.env file, do not overwrite fields loaded from the user's go/env file.
+ 			if _, ok := envCache.m[string(key)]; ok {
+@@ -418,6 +420,26 @@
+ 	}
+ }
+ 
++// Mavericks: gorootRelativeCC resolves a CC or CXX read from $GOROOT/go.env whose command
++// is a relative path with a separator (bin/mavericks-clang) against GOROOT, so a toolchain
++// that names its own C compiler wrapper works wherever it is installed or unpacked. It is
++// the shape 'go env -w' refuses as relative. Absolute paths and bare names (a PATH lookup)
++// are kept, and values from the environment or the user's go/env file never come here.
++func gorootRelativeCC(goroot, key, val string) string {
++	if key != "CC" && key != "CXX" {
++		return val
++	}
++	args, err := quoted.Split(val)
++	if err != nil || len(args) == 0 || filepath.IsAbs(args[0]) || args[0] == filepath.Base(args[0]) {
++		return val
++	}
++	args[0] = filepath.Join(goroot, args[0])
++	if s, err := quoted.Join(args); err == nil {
++		return s
++	}
++	return val
++}
++
+ // Getenv gets the value for the configuration key.
+ // It consults the operating system environment
+ // and then the go/env file.

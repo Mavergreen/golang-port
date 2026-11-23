@@ -42,14 +42,13 @@ tl_stage linux amd64 "$dest"
 mkdir -p "$dest/lib"
 cp "$RECAULK_LIB" "$dest/lib/librecaulk.a"
 sh "$PORT_DIR/build/write-wrappers.sh" linux "$dest"
-# spec: PORT.md, the build chain -- out of the box this toolchain targets 10.9 darwin/amd64. Go reads CC from $GOROOT/go.env and does not
-#       resolve a relative one, so it is the install@v1 prefix (the macOS cross product's prefix too). An archive extracted anywhere
-#       else must set CC=<where>/bin/mavericks-cross-clang itself (the environment beats go.env).
+# spec: PORT.md, the build chain -- out of the box this toolchain targets 10.9 darwin/amd64. CC is relative to GOROOT, which port patch
+#       0020 resolves, so an archive extracted anywhere finds its own wrapper with no CC set (the environment still beats go.env).
 {
   echo "GOOS=darwin"
   echo "GOARCH=amd64"
   echo "CGO_ENABLED=1"
-  echo "CC=$CROSS_PREFIX/bin/mavericks-cross-clang"
+  echo "CC=bin/mavericks-cross-clang"
 } >> "$dest/go.env"
 
 # spec: PORT.md, the build chain -- bin/go is a Linux x86-64 ELF file (e_machine 0x3e); a Mach-O or another architecture fails here

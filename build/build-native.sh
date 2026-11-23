@@ -34,10 +34,11 @@ mkdir -p "$dest/etc/openssl/certs" "$dest/lib"
 cp "$CA" "$dest/etc/openssl/certs/ca-certificates.crt"
 cp "$RECAULK_LIB" "$dest/lib/librecaulk.a"
 sh "$PORT_DIR/build/write-wrappers.sh" native "$dest"
-# spec: PORT.md, the build chain -- a plain `go build` on the box links 10.9-safe cgo through the shipped wrapper.
+# spec: PORT.md, the build chain -- a plain `go build` on the box links 10.9-safe cgo through the shipped wrapper. CC is relative to
+#       GOROOT (port patch 0020 resolves it), so the toolchain works wherever it is installed, copied or unpacked.
 {
   echo "CGO_ENABLED=1"
-  echo "CC=$PREFIX/bin/mavericks-clang"
+  echo "CC=bin/mavericks-clang"
 } >> "$dest/go.env"
 
 # spec: PORT.md, the build chain -- every staged binary is an x86_64 Mach-O recording minos 10.9 and sdk 10.9 (a host binary, or one

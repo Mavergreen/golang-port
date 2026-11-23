@@ -4,8 +4,8 @@ Go upstream does not support Mac OS X 10.9. This port carries changes to make it
 there. **This file is the authority for why each one exists.** Design specs are history; if a spec
 and this file disagree, this file wins, and the change to it goes in the same commit as the code.
 
-This file serves every Mavergreen golang line, not one: the overlay files live here, and the hook
-patches each line repo still carries are explained here too. A line's `tests/port-md-test.sh` holds
+This file serves every Mavergreen golang line, not one: the overlay files and the port's own patches
+(`patches/`) live here, and the hook patches each line repo still carries are explained here too. A line's `tests/port-md-test.sh` holds
 that line's patches to this file (a hook patch with no section, or a line patch that re-adds an
 overlay file, fails the line's build). This port's own `tests/port-md-test.sh` holds this file to
 the overlay.
@@ -165,6 +165,19 @@ invariants 1, 5). `TestSSLCertEnvOverride` keeps running and asserts invariant 4
 (`tests/on-target-trust-test.sh` proves the check). *Reconsider:* when upstream's tests stop
 asserting upstream's darwin semantics.
 
+### 0020-cmd-go-goroot-relative-cc.patch
+Port patch (line-independent, in this port's `patches/`; `build/apply-patches.sh` applies it after the line's hook patches, and
+it applies unchanged to Go 1.26 and 1.27). `cmd/go/internal/cfg`'s `readEnvFile`, for a value read from `$GOROOT/go.env`, passes
+CC and CXX through `gorootRelativeCC`: a command that is relative and has a separator (`bin/mavericks-clang`) is joined to
+GOROOT, and quoted if the result holds a space, as Go quotes any CC. Values from the environment or the user's `go env -w` file,
+absolute paths and bare names (a PATH lookup) are untouched. The three build scripts write `CC=bin/mavericks-clang` or
+`CC=bin/mavericks-cross-clang`, so `go env CC` prints the toolchain's own wrapper wherever the toolchain is: for an installed
+pkg, the same absolute path as before. *Why:* Go does not expand go.env values, so with an absolute prefix in go.env a
+toolchain copied or unpacked anywhere else execs a path that does not exist, and every darwin link is external; a standalone
+archive must work wherever it is unpacked. *Upstreamable:* `go env -w` already refuses this shape as relative, so no existing
+go.env can mean anything else by it (queued: upstream GOROOT-relative CC in go.env). *Reconsider:* when a Go release carries it,
+or the toolchains stop naming their own wrapper in go.env.
+
 ### overlay/src/crypto/x509/root_keychainunion.go
 Overlay (portable). `buildKeychainUnionPool`, the bundle parsing and `keychainUnionResolveBundlePaths`
 (invariants 1, 3), and the distrust set. *Why:* invariants 1–3. *Reconsider:* never while
@@ -214,7 +227,12 @@ paths it embeds reproducible without the flag, or `tests/cross-host-bytes.sh` st
 ### Fixed C-toolchain paths
 Build rule. Go hashes the C compiler's absolute path into build IDs, so every host reaches the compiler, the SDK and Recaulk
 at the family's installed prefixes: `/usr/local/mavergreen/clang22`, `/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk`,
-`/usr/local/mavergreen/recaulk`, and the products' own `/usr/local/mavergreen/go1NN` and `go1NN-cross`. On Linux,
+`/usr/local/mavergreen/recaulk`, and the products' own `/usr/local/mavergreen/go1NN` and `go1NN-cross`. These are build-time paths
+only: what ships does not depend on its own prefix. Each shipped wrapper (`build/write-wrappers.sh`) finds Recaulk in `../lib`
+beside itself, from `$0` by expansion, and its clang22 and 10.9 SDK at the family prefix unless `MAVERGREEN_CLANG22`
+(`MAVERGREEN_CLANG22_CROSS` for the cross wrapper, whose compiler is another product), or `MAVERGREEN_SDK109` (an sdk109
+directory, the one holding `SDKs/MacOSX10.9.sdk`), names another; go.env names the wrapper relative to GOROOT (patch 0020).
+`tests/relocate-test.sh` moves the wrappers to a path with a space. On Linux,
 install@v1 `products:` puts each at its pkg's prefix, as it does on a Mac. `build/c-toolchain.sh` checks each against the line's pin
 (`components/<name>/version`) and writes the build wrapper `$WORK/cc/bin/clang`; nothing falls back to a cache path.
 The wrapper may sit anywhere because Go reaches it by the bare name `clang` on `PATH`, but `build/env.sh` spells `$WORK` clean (one
@@ -265,8 +283,8 @@ Rules the chain keeps and differences a reader will notice; none is a regression
   wrapper answers from clang22's prefix) and `sdk109`. Listing `go1NN-cross@<version>` under install@v1 `products:` on a Linux
   runner installs it at `/usr/local/mavergreen/go1NN-cross` (`tests/linux-cross-test.sh` installs it through `product-tar.py`).
   Its contents are identical whichever host built it, but its `.tar.gz` bytes differ per host (the gzip implementation), so
-  compare trees, not archives. Its `go.env` names `CC` absolutely, at `/usr/local/mavergreen/go1NN-cross/bin/mavericks-cross-clang`:
-  unpack it anywhere else and set `CC`.
+  compare trees, not archives. Its `go.env` names `CC=bin/mavericks-cross-clang`, which patch 0020 resolves against GOROOT, so it
+  works unpacked anywhere with no `CC` set (`tests/linux-cross-test.sh` builds cgo from a copy at a path with a space).
 - **Linux installs the C toolchain with install@v1 `products:`**, the same as a Mac: `clang22@<version> sdk109@<tag>
   recaulk@<version>` (pins from the line's `components/*/version`), each at its pkg's prefix with that pkg's `mavergreen.plist`
   (shipyard 1.0.822 and later). The port carries no installer of its own; the refusals in `build/c-toolchain.sh` and the

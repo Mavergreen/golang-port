@@ -91,12 +91,12 @@ if [ "$(uname -s)" != Linux ] || [ "$(uname -m)" != x86_64 ] || [ ! -x "$cl/bin/
   exit 0
 fi
 
-# spec: build/build-linux-cross.sh -- go.env bakes the install@v1 prefix as CC; an archive extracted elsewhere sets CC itself
-want_cc="/usr/local/mavergreen/$root/bin/mavericks-cross-clang"
-grep -q "^CC=$want_cc\$" "$x/go.env" || fail "go.env has no CC=$want_cc: $(tail -4 "$x/go.env" | tr '\n' ' ')"
+# spec: build/build-linux-cross.sh -- go.env names CC relative to GOROOT, and port patch 0020 resolves it there: no CC is set below
+grep -q "^CC=bin/mavericks-cross-clang\$" "$x/go.env" || fail "go.env has no CC=bin/mavericks-cross-clang: $(tail -4 "$x/go.env" | tr '\n' ' ')"
+want_cc="$x/bin/mavericks-cross-clang"
 
 gorun() { env -i PATH="$x/bin:/usr/bin:/bin" HOME="$t" GOCACHE="${GC:-$t/cache}" GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod \
-  CC="$x/bin/mavericks-cross-clang" MAVERGREEN_CLANG22="${MC:-$cl}" "$@"; }
+  MAVERGREEN_CLANG22="${MC:-$cl}" "$@"; }
 
 [ "$(gorun "$x/bin/go" env GOOS)" = darwin ] || fail "GOOS does not default to darwin"
 [ "$(gorun "$x/bin/go" env GOARCH)" = amd64 ] || fail "GOARCH does not default to amd64"
@@ -136,4 +136,17 @@ rc=0
 grep -q 'clang22 is not installed' "$t/nobuild.out" || fail "the failure does not name clang22: $(cat "$t/nobuild.out")"
 grep -q '/nonexistent/bin/clang' "$t/nobuild.out" || fail "the failure does not name /nonexistent/bin/clang: $(cat "$t/nobuild.out")"
 echo "ok: absent clang22 fails naming it"
+# spec: PORT.md, port patch 0020 -- the tree works wherever it is copied: moved to a path with a space, go env CC names the copy's own
+#       wrapper (quoted, as Go quotes a CC with a space) and a cgo build links through it and the copy's own Recaulk (the original
+#       is removed first, so no other Recaulk is there to find)
+m="$t/moved copy"
+cp -R "$x" "$m" || fail "cannot copy $x to $m"
+got=$(env -i PATH=/usr/bin:/bin HOME="$t" GOTOOLCHAIN=local "$m/bin/go" env CC 2>&1)
+[ "$got" = "'$m/bin/mavericks-cross-clang'" ] || fail "moved: go env CC is '$got', want '$m/bin/mavericks-cross-clang' quoted"
+rm -rf "$x" "$t/hellocgo.bin"
+( cd "$t/hellocgo" && x="$m" GC="$t/cache3" gorun "$m/bin/go" build -ldflags=-v -o "$t/hellocgo.bin" . ) > "$t/moved.out" 2>&1 || fail "moved: cgo go build failed: $(cat "$t/moved.out")"
+grep -q 'host link:' "$t/moved.out" || fail "moved: darwin/amd64 did not link external: $(cat "$t/moved.out")"
+"$cl/bin/llvm-nm" "$t/hellocgo.bin" | grep -q ' [Tt] _clock_gettime$' || fail "moved: hello-cgo does not define _clock_gettime: the copy's Recaulk was not linked"
+"$cl/bin/llvm-nm" "$t/hellocgo.bin" | grep -q ' T __cgo_[0-9a-f]*_Cfunc_my_pid$' || fail "moved: hello-cgo has no cgo stub for my_pid"
+echo "ok: a copy at '$m' builds cgo through its own wrapper and Recaulk"
 echo "PASS: linux-cross"

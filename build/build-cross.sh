@@ -30,12 +30,13 @@ cp "$RECAULK_LIB" "$dest/lib/librecaulk.a"
 # spec: PORT.md, the build chain -- the cross pkg requires sdk109; this link names it at its installed place, beside the cross prefix.
 ln -s ../sdk109/SDKs "$dest/SDKs"
 sh "$PORT_DIR/build/write-wrappers.sh" cross "$dest"
-# spec: PORT.md, the build chain -- out of the box the cross toolchain targets 10.9 darwin/amd64; the wrapper handles the link.
+# spec: PORT.md, the build chain -- out of the box the cross toolchain targets 10.9 darwin/amd64; the wrapper handles the link. CC is
+#       relative to GOROOT (port patch 0020 resolves it), so the toolchain works wherever it is installed, copied or unpacked.
 {
   echo "GOOS=darwin"
   echo "GOARCH=amd64"
   echo "CGO_ENABLED=1"
-  echo "CC=$CROSS_PREFIX/bin/mavericks-cross-clang"
+  echo "CC=bin/mavericks-cross-clang"
 } >> "$dest/go.env"
 
 # spec: PORT.md, the build chain -- every staged binary is an arm64 Mach-O (a host binary fails here); its minos and sdk are Go's

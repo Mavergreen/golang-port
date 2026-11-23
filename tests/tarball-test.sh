@@ -29,7 +29,7 @@ x="$t/x/golang-port-$v"
 (cd "$x" && find . -type f | sed 's|^\./||' | sort) > "$t/files"
 # spec: build/tarball.sh -- the port's own files: the overlay, and now the build chain (build/, CMakeLists.txt, updater/, resources/, tests/);
 #       the line fixtures stay out, because a fixture is a copy of what a line holds, not something a line extracts from here
-(cd "$t/clone" && git ls-tree -r --name-only HEAD | grep -E '^(LICENSE$|PORT\.md$|UPSTREAM_VERSION$|apply-overlay\.sh$|CMakeLists\.txt$|(overlay|build|updater|resources|tests)/)' | grep -v '^tests/fixtures/line-' | sort) > "$t/want"
+(cd "$t/clone" && git ls-tree -r --name-only HEAD | grep -E '^(LICENSE$|PORT\.md$|UPSTREAM_VERSION$|apply-overlay\.sh$|CMakeLists\.txt$|(patches|overlay|build|updater|resources|tests)/)' | grep -v '^tests/fixtures/line-' | sort) > "$t/want"
 for must in build/tarball.sh build/env.sh CMakeLists.txt tests/tarball-test.sh tests/fixtures/hello/main.go updater resources; do
   grep -q "^$must" "$t/want" || fail "the clone's HEAD lacks $must, so this test cannot check it is archived"
   grep -q "^$must" "$t/files" || fail "$must is missing from the tarball"

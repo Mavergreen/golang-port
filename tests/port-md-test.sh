@@ -14,6 +14,10 @@ done
 for f in $(sed -n 's|^### \(overlay/.*\)$|\1|p' "$M"); do
   [ -f "$R/$f" ] || { echo "FAIL: PORT.md explains $f, which is not in the overlay"; fail=1; }
 done
+# spec: PORT.md -- one section per port patch (a line's hook patches are held to PORT.md by that line's own port-md-test)
+for f in $(cd "$R" && find patches -type f -name '*.patch' 2>/dev/null | sed 's|^patches/||' | sort); do
+  grep -q "^### $f\$" "$M" || { echo "FAIL: PORT.md has no '### $f' section"; fail=1; }
+done
 # spec: PORT.md "Build chain" -- one entry per Phase 0 rule, plus the standing rules and known differences
 grep -q "^## Build chain\$" "$M" || { echo "FAIL: PORT.md has no '## Build chain' section"; fail=1; }
 for h in "-trimpath on every toolchain binary" "Fixed C-toolchain paths" "CC and CC_FOR_TARGET are unset during make.bash" "DWARF is kept: dsymutil and strip come from clang22" "Standing rules and known differences"; do

@@ -15,13 +15,13 @@ CC_WRAPPER="$(sh "$PORT_DIR/build/c-toolchain.sh")" || exit $?
 CC_DIR="$(dirname "$CC_WRAPPER")"
 clang22="$(sed -n 's/^clang22=//p' "$WORK/cc/versions")"
 
-# spec: PORT.md, the build chain -- the builder key: Go version, sha256 over the line's patches + the port's overlay + apply-overlay.sh
+# spec: PORT.md, the build chain -- the builder key: Go version, sha256 over the line's patches + the port's patches, overlay and apply-overlay.sh
 #       (sorted, names and contents), the clang22 version c-toolchain recorded (the installed one, which on a dev box may differ
 #       from the pin), and `uname -sm`. The bootstrap toolchain is left OUT of the key on purpose (shipyard ruling): make.bash
 #       rebuilds the toolchain in three stages, so its output does not depend on the bootstrap.
 patch_sha="$( { ( cd "$LINE_ROOT" && LC_ALL=C find patches -type f -name '*.patch' | LC_ALL=C sort \
       | while read -r f; do printf '%s %s\n' "$(shasum -a 256 < "$f" | awk '{print $1}')" "$f"; done )
-    ( cd "$PORT_DIR" && LC_ALL=C find overlay apply-overlay.sh -type f ! -name '._*' ! -name .DS_Store | LC_ALL=C sort \
+    ( cd "$PORT_DIR" && LC_ALL=C find patches overlay apply-overlay.sh -type f ! -name '._*' ! -name .DS_Store | LC_ALL=C sort \
       | while read -r f; do printf '%s %s\n' "$(shasum -a 256 < "$f" | awk '{print $1}')" "$f"; done ); } \
     | shasum -a 256 | awk '{print $1}')"
 {

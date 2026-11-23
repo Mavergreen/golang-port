@@ -1,7 +1,8 @@
 #!/bin/sh
 # platform: host-agnostic
 # spec: PORT.md, the build chain -- build/apply-patches.sh: applies the line's hook patches ($LINE_ROOT/patches/*.patch), then the
-#       port's overlay (apply-overlay.sh, @SSLDIR@ -> $CA_DIR), to the pristine tree at $WORK/go.
+#       port's own patches ($PORT_DIR/patches/*.patch, line-independent, numbered after the lines'), then the port's overlay
+#       (apply-overlay.sh, @SSLDIR@ -> $CA_DIR), to the pristine tree at $WORK/go.
 #       usage: LINE_ROOT=<line checkout> sh build/apply-patches.sh
 set -eu
 PORT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,10 +20,10 @@ ls "$pdir"/*.patch >/dev/null 2>&1 || { echo "apply-patches.sh: no patches in $p
 #       (tests/trust, the compat guard, the distrust acceptance test) are what judge that. -V none and --no-backup-if-mismatch leave
 #       no .orig or .~N~ files (the latter is what BSD patch 2.5.8 on 10.9 writes when a hunk applies with fuzz).
 cd "$WORK/go"
-for p in "$pdir"/*.patch; do
+for p in "$pdir"/*.patch "$PORT_DIR"/patches/*.patch; do
   echo "applying $(basename "$p")"
   patch -p0 -F 3 -V none --no-backup-if-mismatch < "$p" || { echo "apply-patches.sh: $(basename "$p") does not apply to $WORK/go" >&2; exit 1; }
 done
 
 sh "$PORT_DIR/apply-overlay.sh" "$WORK/go" "$CA_DIR"
-echo "hook patches from $pdir + overlay applied (@SSLDIR@ -> $CA_DIR)"
+echo "hook patches from $pdir + the port's patches + overlay applied (@SSLDIR@ -> $CA_DIR)"
