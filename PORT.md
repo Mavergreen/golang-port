@@ -300,10 +300,12 @@ Rules the chain keeps and differences a reader will notice; none is a regression
   with a space and checks that `go env GOROOT` and `go env CC` name the unpacked copy. It then builds a pure-Go and a cgo hello
   through that copy's wrapper, each x86_64 and minos 10.9; they run on an x86_64 host and are only inspected on an arm64 one.
   The lines' on-target job runs it on the native archive, and modern-smoke on the cross archive. Without an archive, or on a
-  host that cannot run its arch, it skips (77). *Open:* the checker refuses `src/crypto/x509/root_keychainunion_darwin.go` and
-  its test, because they name the CA-bundle defaults of invariant 7 (`/usr/local/mavergreen/ca-certs/...` and this line's
-  `@SSLDIR@`, which is `/usr/local/mavergreen/go1NN/etc/openssl`). Those paths are where a built program looks on the machine
-  it runs on, not paths the toolchain needs, so this awaits shipyard's ruling (queued).
+  host that cannot run its arch, it skips (77). `src/crypto/x509/root_keychainunion_darwin.go` and its test name the CA-bundle
+  defaults of invariant 7: `/usr/local/mavergreen/ca-certs/...`, and `@SSLDIR@`, which is `/usr/local/mavergreen/go1NN/etc/openssl`.
+  Those are where a built program looks on the machine it runs on; the toolchain never reads them. Each line therefore declares
+  `- standalone-text:src/crypto/x509/root_keychainunion_darwin*.go: <reason>` under its INGREDIENTS.md `## Conformance
+  deviations` (shipyard 1.0.845 and later), and package.sh hands the checker that file with `--repo "$LINE_ROOT"`. The check
+  runs after `build_component_pkg.sh` normalises the root's modes, so the archive's modes are the pkg's.
 - **Linux installs the C toolchain with install@v1 `products:`**, the same as a Mac: `clang22@<version> sdk109@<tag>
   recaulk@<version>` (pins from the line's `components/*/version`), each at its pkg's prefix with that pkg's `mavergreen.plist`
   (shipyard 1.0.822 and later). The port carries no installer of its own; the refusals in `build/c-toolchain.sh` and the

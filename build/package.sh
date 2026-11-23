@@ -120,7 +120,9 @@ rm -f "$comp"   # intermediate: only the floored product archive ships
 # spec: PORT.md, the build chain -- the standalone archive: the same staged root, the product's tree alone, for a user who unpacks it
 #       anywhere (stage_standalone.sh). The cross tree's SDKs -> ../sdk109/SDKs link stays the pkg's: sdk109 is a declared require and
 #       the wrapper finds the SDK itself, so the archive is staged from a copy of the product tree without that link, leaving the pkg
-#       root as it was. check-standalone-archive.sh judges it against the staged manifest, whose requires the wrappers may name.
+#       root as it was. check-standalone-archive.sh judges it against the staged manifest, whose requires the wrappers may name, and
+#       the line's INGREDIENTS.md, whose standalone-text deviations excuse crypto/x509's CA-bundle defaults (PORT.md invariant 7).
+#       It runs after build_component_pkg.sh, which normalises the root's modes, so the archive's modes are the pkg's.
 archive="$out/$product-$PKG_VERSION-macos-$arch.tar.gz"
 rm -f "$archive"
 if [ "$variant" = native ]; then
@@ -134,7 +136,7 @@ else
 fi
 sh "$SHIPYARD_SCRIPTS/stage_standalone.sh" "$saroot" "$product" "$PKG_VERSION" "$arch" "$archive" >&2
 [ "$saroot" = "$root" ] || rm -rf "$saroot"
-sh "$SHIPYARD_SCRIPTS/check-standalone-archive.sh" --plist "$root$prefix/mavergreen.plist" "$archive" >&2 \
+sh "$SHIPYARD_SCRIPTS/check-standalone-archive.sh" --plist "$root$prefix/mavergreen.plist" --repo "$LINE_ROOT" "$archive" >&2 \
   || die "check-standalone-archive.sh refused $archive"
 
 # spec: PORT.md, the build chain -- what this variant was built FROM; conformance compares the native and cross records. The built_* keys are

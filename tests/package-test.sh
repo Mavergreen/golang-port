@@ -45,6 +45,15 @@ mk "$n/bin/mavericks-clang"
 mkdir -p "$n/etc/openssl/certs"; : > "$n/etc/openssl/certs/ca-certificates.crt"; echo license > "$n/LICENSE"
 for f in bin/go bin/gofmt pkg/tool/darwin_arm64/compile; do macho "$c/$f" arm64; done
 mk "$c/bin/mavericks-cross-clang"
+# spec: build/package.sh -- crypto/x509's CA-bundle defaults (PORT.md invariant 7) name family paths, as the real overlay does; the line's
+#       standalone-text deviation excuses them, so the checker must be handed the line's INGREDIENTS.md
+for r in "$n" "$c"; do
+  mkdir -p "$r/src/crypto/x509"
+  printf 'package x509\n\nvar p = []string{"/usr/local/mavergreen/ca-certs/etc/openssl/certs/ca-certificates.crt", "%s/etc/openssl/certs/ca-certificates.crt"}\n' \
+    "$PREFIX" > "$r/src/crypto/x509/root_keychainunion_darwin.go"
+done
+# spec: build/package.sh -- a group-writable staged file: the payload and the archive both drop the bit, and the staging keeps it
+chmod 775 "$n/bin/gofmt"
 ln -s ../sdk109/SDKs "$c/SDKs"
 : > "$n/._AppleDouble"
 mkdir -p "$WORK/cc"
@@ -92,6 +101,12 @@ grep -qx "$top/etc/openssl/certs/ca-certificates.crt" "$t/na.list" || fail "nati
 grep -qx "$xtop/bin/go" "$t/xa.list" || fail "cross archive has no $xtop/bin/go"
 grep -q 'mavergreen\.plist$' "$t/na.list" "$t/xa.list" && fail "an archive holds the pkg manifest"
 grep -qx "$xtop/SDKs" "$t/xa.list" && fail "the cross archive holds the SDKs link: sdk109 is a require, the wrapper finds the SDK"
+grep -q 'excused by standalone-text:src/crypto/x509/root_keychainunion_darwin\*\.go' "$t/native.err" "$t/cross.err" \
+  || fail "the line's standalone-text deviation did not excuse crypto/x509's defaults: $(cat "$t/native.err")"
+# spec: build/package.sh -- the archive is staged after build_component_pkg.sh normalises modes, so it agrees with the pkg
+m="$(tar -tvzf "$na" | awk -v p="$top/bin/gofmt" '$NF == p { print $1 }')"
+[ "$m" = -rwxr-xr-x ] || fail "the archive's bin/gofmt is '$m', want -rwxr-xr-x (group write dropped, as in the pkg)"
+[ -n "$(find "$n/bin/gofmt" -perm -020)" ] || fail "package.sh changed the staging's modes"
 echo "ok: standalone archives"
 # spec: build/package.sh -- the pkg root keeps its SDKs link (the archive is staged from a filtered copy), and the copy is gone
 [ "$(readlink "$WORK/pkgroot-cross$CROSS_PREFIX/SDKs")" = ../sdk109/SDKs ] || fail "package.sh dropped SDKs from the cross pkg root"
@@ -196,5 +211,10 @@ printf '#!/bin/sh\nexec /usr/local/mavergreen/go%s/bin/go "$@"\n' "$GO_LINE" > "
 sh "$here/build/package.sh" native > "$t/self.out" 2> "$t/self.err" && fail "native packaged an archive whose script names its own prefix"
 grep -q 'self-reference' "$t/self.err" || fail "the checker's finding is shown: $(cat "$t/self.err")"
 grep -q 'check-standalone-archive.sh refused' "$t/self.err" || fail "package.sh says the checker refused: $(cat "$t/self.err")"
+rm -f "$n/bin/self"
+# spec: build/package.sh -- without the line's deviation, the CA-bundle defaults are findings (the self-reference and ca-certs)
+cp -R "$fx" "$t/line-nodev"; rm -f "$t/line-nodev/INGREDIENTS.md"
+LINE_ROOT="$t/line-nodev" sh "$here/build/package.sh" native > "$t/nodev.out" 2> "$t/nodev.err" && fail "native packaged with no standalone-text deviation in the line"
+grep -q 'root_keychainunion_darwin.go names /usr/local/mavergreen/ca-certs' "$t/nodev.err" || fail "the undeclared ca-certs finding: $(cat "$t/nodev.err")"
 echo "ok: refusals"
 echo "PASS: package"
