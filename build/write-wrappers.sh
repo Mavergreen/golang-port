@@ -24,9 +24,10 @@ case "$kind" in native|cross|linux) ;; *) usage ;; esac
 MG="${MAVERGREEN_PREFIX:-/usr/local/mavergreen}"
 # spec: PORT.md, the build chain -- every wrapper finds its own directory from $0 by expansion, not dirname, which a minimal PATH (/bin on
 #       10.9) lacks, and Recaulk in ../lib beside it: the installed pkg's own lib/, or wherever the tree was unpacked or copied.
+#       CDPATH is emptied for that cd: an exported CDPATH would send it elsewhere and make it print the directory.
 #       MAVERGREEN_SDK109 names an sdk109 directory (the one holding SDKs/MacOSX10.9.sdk), as MAVERGREEN_CLANG22 names a clang22 one.
 beside='case "$0" in */*) here="${0%/*}" ;; *) here=. ;; esac
-recaulk="$(cd "$here/.." && pwd)/lib/librecaulk.a"'
+recaulk="$(CDPATH= cd "$here/.." && pwd)/lib/librecaulk.a"'
 sdk="sdk=\"\${MAVERGREEN_SDK109:-$MG/sdk109}/SDKs/MacOSX10.9.sdk\""
 mac_sdk='no_sdk="sdk109 is not installed (no $sdk). Install it: sudo longboat sdk install 10.9 (github.com/Mavergreen/longboat), or set MAVERGREEN_SDK109 to an sdk109 directory"'
 mkdir -p "$dir/bin"

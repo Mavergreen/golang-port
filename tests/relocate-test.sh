@@ -56,6 +56,11 @@ for k in native cross linux; do
   [ ! -s "$t/e" ] || fail "$k relative, PATH=/bin: $(cat "$t/e")"
   arg "$t/l" "$d/lib/librecaulk.a" "$k relative, PATH=/bin"
 
+  # spec: build/write-wrappers.sh -- an exported CDPATH that holds a matching ".." does not move the cd, nor add its echo to the path
+  mkdir -p "$t/decoy/bin"
+  ( cd "$d" && CDPATH="$t/decoy:." && export CDPATH && bin/$n x.o -o x ) > "$t/l" 2> "$t/e" || fail "$k with CDPATH: $(cat "$t/e")"
+  arg "$t/l" "$d/lib/librecaulk.a" "$k relative, CDPATH exported"
+
   # spec: build/write-wrappers.sh -- the overrides, each at a path with a space
   env "$ov=$o" MAVERGREEN_SDK109="$t/other sdk" "$w" x.o -o x > "$t/l" || fail "$k: link with overrides failed"
   [ "$(sed -n 1p "$t/l")" = "$o/bin/clang" ] || fail "$k: $ov: ran $(sed -n 1p "$t/l"), want $o/bin/clang"
