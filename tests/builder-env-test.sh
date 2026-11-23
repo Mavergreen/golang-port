@@ -49,7 +49,7 @@ run() {
   rc=0
   FIXTURE_COUNT="$t/count" MAVERGREEN_PREFIX="$P" MAVERICKS_WORK="$t/work" LINE_ROOT="$1" \
     GOROOT_BOOTSTRAP="${2-$t/boot}" BUILDER_FETCH_GO="$t/fetch" BUILDER_APPLY_PATCHES="$t/apply" \
-    sh "$here/build/build-builder.sh" >"$t/out" 2>"$t/err" || rc=$?
+    sh "${PORT_COPY:-$here}/build/build-builder.sh" >"$t/out" 2>"$t/err" || rc=$?
 }
 count() { [ -f "$t/count/$1" ] && wc -l < "$t/count/$1" | tr -d ' ' || echo 0; }
 
@@ -101,6 +101,19 @@ run "$t/line"
 [ "$rc" = 0 ] || fail "changed patch: exit $rc: $(cat "$t/err")"
 [ "$(count makes)" = 3 ] || fail "changed patch byte did not rebuild (makes=$(count makes))"
 [ "$(count fetches)" = 3 ] || fail "rebuild did not start from a fresh fetch"
+
+# spec: build/build-builder.sh -- the port's own patches are in the key: a copy of the port with the same files reuses the builder,
+#       and one changed byte in a port patch rebuilds
+mkdir "$t/port" && cp -R "$here/build" "$here/patches" "$here/overlay" "$here/apply-overlay.sh" "$t/port/"
+PORT_COPY="$t/port" run "$t/line"
+[ "$rc" = 0 ] || fail "port copy: exit $rc: $(cat "$t/err")"
+[ "$(count makes)" = 3 ] || fail "an identical port copy rebuilt (makes=$(count makes))"
+key_before=$(cat "$t/work/builder.key")
+for f in "$t/port"/patches/*.patch; do printf '\n' >> "$f"; break; done
+PORT_COPY="$t/port" run "$t/line"
+[ "$rc" = 0 ] || fail "changed port patch: exit $rc: $(cat "$t/err")"
+[ "$(count makes)" = 4 ] || fail "a changed port patch did not rebuild (makes=$(count makes))"
+[ "$(cat "$t/work/builder.key")" != "$key_before" ] || fail "a changed port patch left the builder key as it was"
 
 # spec: build/build-builder.sh -- a make.bash that fails leaves no key, so the half-built tree is never reused
 cat > "$t/fetchfail" <<'EOS'
