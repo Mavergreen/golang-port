@@ -42,6 +42,6 @@ $mac_sdk" ;;
 sdk='$SDK'
 case \"\$0\" in */*) here=\"\${0%/*}\" ;; *) here=. ;; esac
 recaulk=\"\$(cd \"\$here/..\" && pwd)/lib/librecaulk.a\"
-no_clang=\"clang22 is not installed (no \$cc_prefix/bin/clang). Install it: install@v1 products: clang22@$CLANG22_VERSION (it lands at /usr/local/mavergreen/clang22), or set MAVERGREEN_CLANG22 to a clang22 directory\"
-no_sdk='sdk109 is not installed (no $SDK). Install it: install@v1 products: sdk109'" ;;
+no_clang=\"clang22 is not installed (no \$cc_prefix/bin/clang). Install it: sudo -E sh build/provision-linux.sh clang22@$CLANG22_VERSION from golang-port, until install@v1 products: covers Linux (it lands at /usr/local/mavergreen/clang22), or set MAVERGREEN_CLANG22 to a clang22 directory\"
+no_sdk='sdk109 is not installed (no $SDK). Install it: sudo -E sh build/provision-linux.sh sdk109 from golang-port, until install@v1 products: covers Linux'" ;;
 esac

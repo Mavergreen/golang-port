@@ -1,8 +1,8 @@
 #!/bin/sh
 # platform: host-agnostic -- the Linux half of provisioning; it refuses Darwin itself, where install@v1 `products:` and Longboat install
 # spec: PORT.md, the build chain -- build/provision-linux.sh, interim until install@v1 `products:` installs on Linux (shipyard's
-#       install-products.sh installs with macOS's `installer`). Exit: shipyard's queue entry "install@v1 `products:` learns Linux
-#       assets"; then this script is deleted and a line's Linux job names its products to install@v1 instead.
+#       install-products.sh installs with macOS's `installer`).
+#       Exit: delete this script when shipyard's install@v1 `products:` learns Linux assets; a line's Linux job then names its products to install@v1.
 #       usage: sudo -E sh build/provision-linux.sh [--root DIR] clang22@<version> sdk109[@<longboat tag>] recaulk@<version>
 #       A line passes its pins from components/*/version. Each product lands where its macOS pkg installs it,
 #       DIR/usr/local/mavergreen/<short>/ (DIR defaults to /), with the mavergreen.plist that install leaves:
@@ -19,6 +19,8 @@ set -eu
 usage() { echo "usage: sudo -E sh build/provision-linux.sh [--root DIR] clang22@<version> sdk109[@<longboat tag>] recaulk@<version>" >&2; exit 2; }
 die() { echo "provision-linux.sh: $*" >&2; exit 1; }
 say() { echo "provision-linux.sh: $*" >&2; }
+# spec: build/provision-linux.sh -- Darwin refuses first, whatever the arguments
+[ "${MAVERGREEN_UNAME_S:-$(uname -s)}" != Darwin ] || die "this is Linux's interim provisioner; on macOS install the products with install@v1 \`products:\` or Longboat (sudo longboat sdk install 10.9; sudo installer -pkg <product>.pkg -target /)"
 
 ROOT=/
 while [ $# -gt 0 ]; do
@@ -32,6 +34,7 @@ done
 [ $# -gt 0 ] || usage
 for p in "$@"; do
   case "$p" in
+    clang22@any|recaulk@any) echo "provision-linux.sh: '$p' must name its release: clang22 and recaulk are pinned" >&2; usage ;;
     clang22@*|recaulk@*|sdk109@*) t="${p#*@}" ;;
     sdk109) t=any ;;
     *) echo "provision-linux.sh: '$p' is not clang22@<version>, sdk109[@<longboat tag>] or recaulk@<version>" >&2; usage ;;
@@ -39,7 +42,6 @@ for p in "$@"; do
   case "$t" in ''|.|..|latest|*[!A-Za-z0-9._+-]*) echo "provision-linux.sh: '$p' names no release tag" >&2; usage ;; esac
 done
 
-[ "${MAVERGREEN_UNAME_S:-$(uname -s)}" != Darwin ] || die "this is Linux's interim provisioner; on macOS install the products with install@v1 \`products:\` or Longboat (sudo longboat sdk install 10.9; sudo installer -pkg <product>.pkg -target /)"
 SY="${SHIPYARD_SCRIPTS:-}"
 [ -n "$SY" ] && [ -f "$SY/fetch_product_tar.sh" ] || die "SHIPYARD_SCRIPTS names no shipyard scripts directory (have: '${SY}'); install shipyard and export it"
 
@@ -60,7 +62,17 @@ place() {
   [ -f "$2/mavergreen.plist" ] || die "$1: the staged tree has no mavergreen.plist"
   _pv="$(plist_version "$2")"
   [ "$_pv" = "$3" ] || die "$1: the release's mavergreen.plist says version '$_pv', not $3"
-  rm -rf "$MG/$1" && mv "$2" "$MG/$1" || die "$1: cannot move the staged tree to $MG/$1"
+  # spec: build/provision-linux.sh -- the old tree moves aside before the new one moves in, so an interruption never leaves the product absent
+  _old=""
+  if [ -e "$MG/$1" ] || [ -L "$MG/$1" ]; then
+    _old="$work/old-$1"
+    mv "$MG/$1" "$_old" || die "$1: cannot move the old tree at $MG/$1 aside"
+  fi
+  if ! mv "$2" "$MG/$1"; then
+    [ -z "$_old" ] || mv "$_old" "$MG/$1"
+    die "$1: cannot move the staged tree to $MG/$1"
+  fi
+  [ -z "$_old" ] || rm -rf "$_old"
   say "installed $1 $3 at $MG/$1"
 }
 
@@ -98,6 +110,10 @@ clang22() {
   [ -x "$work/clang22/bin/clang" ] || die "clang22 $1: the archive has no bin/clang"
   pkg_plist clang22 "$1" "$work/clang22/mavergreen.plist"
   place clang22 "$work/clang22" "$1"
+  # spec: build/c-toolchain.sh -- it refuses a clang22 without the three tools Go's darwin link asks the wrapper for
+  for _t in dsymutil llvm-strip llvm-ar; do
+    [ -x "$MG/clang22/bin/$_t" ] || say "warning: clang22 $1 has no bin/$_t, so build/c-toolchain.sh will refuse it; clang22 22.1.8-mavericks.26 ships it"
+  done
 }
 
 recaulk() {

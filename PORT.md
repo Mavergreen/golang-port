@@ -260,8 +260,7 @@ Rules the chain keeps and differences a reader will notice; none is a regression
   Linux `sudo -E sh build/provision-linux.sh [--root DIR] clang22@<version> sdk109 recaulk@<version>` (pins from the line's
   `components/*/version`) puts each product at its pkg's prefix with the `mavergreen.plist` that pkg installs: clang22 from its
   linux-x86_64 archive and the plist from its release pkg, the pinned SDK with the plist rendered as Longboat renders it, and
-  Recaulk's pkg component. A product already at its version is kept; Darwin refuses. It is a declared deviation in
-  INGREDIENTS.md. Exit: shipyard's queue entry "install@v1 `products:` learns Linux assets"; then the script is deleted.
+  Recaulk's pkg component. A product already at its version is kept; Darwin refuses. Exit: shipyard's queue entry "install@v1 `products:` learns Linux assets"; then the script is deleted.
 - **On-target builds link without warnings.** `tests/on-target/run.sh` fails any check whose build output, stderr included,
   holds `newer than target minimum` or any `ld64.lld: warning:`, naming the line (`tests/on-target/build-output.sh`,
   proven by `tests/on-target-output-test.sh`). The lines' patch 0019 removes the `go.o has version 13.0.0` warning every

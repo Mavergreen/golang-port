@@ -71,6 +71,13 @@ for v in "$RV" "$RV2"; do
   sums "$d"
 done
 
+# spec: build/provision-linux.sh -- the mismatch fixture: a recaulk release whose pkg plist names another version than its tag
+v=20261122.9; d="$rel/recaulk/releases/download/$v"; r="$t/rp-$v/usr/local/mavergreen/recaulk"; mkdir -p "$d" "$r/lib"
+echo "$v" > "$r/lib/librecaulk.a"
+mkplist "$r/mavergreen.plist" dev.mavergreen.recaulk recaulk 20261122.8
+mkpkg "$t/rp-$v" dev.mavergreen.recaulk "$v" "$d/recaulk-$v.pkg"
+sums "$d"
+
 # spec: build/provision-linux.sh -- the sdk109 fixture: longboat's latest release, and the SDK pin served from a file
 mkdir -p "$rel/longboat/releases" "$t/sdk/MacOSX10.9.sdk/usr/lib"
 echo "$LB" > "$rel/longboat/releases/latest"
@@ -112,6 +119,7 @@ p="$MG/sdk109/mavergreen.plist"
   && [ "$(key "$p" version)" = "$LB" ] && [ "$(key "$p" name)" = "Mac OS X 10.9 SDK" ] \
   || fail "sdk109's plist is not longboat's for $LB: $(cat "$p")"
 has "installed clang22 $CV" "first run"
+has "warning: clang22 $CV has no bin/dsymutil, so build/c-toolchain.sh will refuse it; clang22 22.1.8-mavericks.26 ships it" "first run"
 
 # spec: build/provision-linux.sh -- idempotent: the same versions again are kept, trees untouched
 for s in clang22 sdk109 recaulk; do echo mark > "$MG/$s/.mark"; done
@@ -130,11 +138,20 @@ cmp -s "$t/recaulk-$RV2.plist" "$MG/recaulk/mavergreen.plist" || fail "recaulk's
 [ "$(key "$MG/sdk109/mavergreen.plist" version)" = "$LB2" ] || fail "sdk109@$LB2 did not re-version sdk109"
 [ -f "$MG/clang22/.mark" ] || fail "a run that did not name clang22 touched it"
 
+# spec: build/provision-linux.sh -- a release whose plist disagrees with its tag fails, and the installed tree stays
+prov Linux --root "$R" "recaulk@20261122.9"
+[ "$rc" = 1 ] || fail "mismatch: want exit 1, got $rc: $(cat "$t/log")"
+has "recaulk: the release's mavergreen.plist says version '20261122.8', not 20261122.9" "mismatch"
+cmp -s "$t/recaulk-$RV2.plist" "$MG/recaulk/mavergreen.plist" || fail "the failed mismatch run disturbed the installed recaulk"
+[ "$(ls -A "$MG" | tr '\n' ' ')" = "clang22 recaulk sdk109 " ] || fail "the failed run left: $(ls -A "$MG" | tr '\n' ' ')"
+
 # spec: build/provision-linux.sh -- Darwin refuses before touching anything (macOS installs through install@v1 or Longboat)
 prov Darwin --root "$t/darwin" "clang22@$CV"
 [ "$rc" = 1 ] || fail "Darwin: want exit 1, got $rc: $(cat "$t/log")"
 has 'install@v1 `products:` or Longboat' "Darwin"
 [ ! -e "$t/darwin" ] || fail "Darwin: the refusal created $t/darwin"
+prov Darwin --bogus sdk113
+[ "$rc" = 1 ] || fail "Darwin refuses before reading the arguments: want exit 1, got $rc"
 if [ "$(uname -s)" = Darwin ]; then
   rc=0; SHIPYARD_SCRIPTS="$SY" sh "$here/build/provision-linux.sh" --root "$t/darwin" sdk109 > "$t/log" 2>&1 || rc=$?
   [ "$rc" = 1 ] || fail "on this Darwin host: want exit 1, got $rc: $(cat "$t/log")"
@@ -145,5 +162,9 @@ prov Linux --root "$R" sdk113
 [ "$rc" = 2 ] || fail "sdk113: want exit 2, got $rc"
 prov Linux --root "$R" clang22
 [ "$rc" = 2 ] || fail "clang22 with no version: want exit 2, got $rc"
+for p in clang22@any recaulk@any; do
+  prov Linux --root "$R" "$p"
+  [ "$rc" = 2 ] || fail "$p: want exit 2 (clang22 and recaulk are pinned), got $rc"
+done
 
 echo "PASS: provision-linux"

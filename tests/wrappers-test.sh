@@ -101,14 +101,14 @@ rm -rf "$t/linux"; mv "$t/elsewhere" "$t/linux"
 rm -rf "$P/clang22" "$P/clang22-cross"
 missing native mavericks-clang clang22 "sudo installer -pkg clang22-22.1.8-mavericks.25.pkg"
 missing cross mavericks-cross-clang clang22-cross "sudo installer -pkg clang22-cross-22.1.8-mavericks.25.pkg"
-missing linux mavericks-cross-clang clang22 "install@v1 products: clang22@22.1.8-mavericks.25"
-missing linux mavericks-cross-clang clang22 "install@v1 products: clang22" MAVERGREEN_CLANG22="$t/nowhere"
+missing linux mavericks-cross-clang clang22 "provision-linux.sh clang22@22.1.8-mavericks.25"
+missing linux mavericks-cross-clang clang22 "provision-linux.sh clang22" MAVERGREEN_CLANG22="$t/nowhere"
 
-# spec: build/write-wrappers.sh -- a missing sdk109 names Longboat (macOS) or install@v1 (Linux)
+# spec: build/write-wrappers.sh -- a missing sdk109 names Longboat (macOS) or provision-linux.sh (Linux)
 mkdir -p "$P/clang22/bin"; printf '#!/bin/sh\necho "$0 $*"\n' > "$P/clang22/bin/clang"; chmod +x "$P/clang22/bin/clang"
 rm -rf "$P/sdk109"
 missing native mavericks-clang sdk109 "sudo longboat sdk install 10.9"
-missing linux mavericks-cross-clang sdk109 "install@v1 products: sdk109"
+missing linux mavericks-cross-clang sdk109 "provision-linux.sh sdk109"
 
 # spec: build/write-wrappers.sh -- usage errors exit 2
 write bogus "$t/bogus"; [ "$rc" = 2 ] || fail "unknown kind: exit $rc"

@@ -59,6 +59,7 @@ ot_check_output "crypto/x509 tests" "ok crypto/x509
 $WARN"
 grep -qF "go127 crypto/x509 tests: the build printed a linker warning" "$t/bad" || die "ot_check_output did not catch the warning in captured go test output"
 
+unset GO_LINE
 # spec: tests/on-target/run.sh -- suite: run.sh, with the stub go warning on every build, fails every build check by name and exits 1
 rc=0
 STUB_OUT="$WARN" MAVERGREEN_CLANG22="$t/clang22" GOROOT="$t/goroot" sh "$here/tests/on-target/run.sh" > "$t/suite" 2>&1 || rc=$?
