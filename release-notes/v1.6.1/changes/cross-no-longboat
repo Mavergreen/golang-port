@@ -1,0 +1,1 @@
+The cross toolchain's installer no longer requires Longboat; it requires the sdk109 SDK, which its compiler wrapper uses however it was installed.

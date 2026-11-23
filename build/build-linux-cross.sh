@@ -70,7 +70,7 @@ sh "$SHIPYARD_SCRIPTS/build-info.sh" "$dest/build-info-linux-cross.txt" \
 cp "$dest/build-info-linux-cross.txt" "$out/build-info-linux-cross.txt"
 
 # spec: PORT.md, the build chain -- the archive carries its own mavergreen.plist, so install@v1 `products:` takes the manifest from it rather than
-#       from the cross pkg (whose requires, clang22-cross and Longboat, are a Mac's). Same identifier, product, name, group, line and
+#       from the cross pkg (whose clang22-cross require is a Mac's). Same identifier, product, name, group, line and
 #       version as the cross pkg's; it requires what the Linux wrapper calls: clang22 at its prefix, from the first release that ships
 #       dsymutil (Go's darwin link asks for it), and the 10.9 SDK.
 gominor="${GO_VERSION%.*}"

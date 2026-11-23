@@ -79,13 +79,13 @@ cp -pRP "$src/." "$root/"
 find "$root" -name '._*' -exec rm -rf {} + 2>/dev/null || true
 
 # spec: PORT.md, the build chain -- the shipped wrappers call clang22 (clang22-cross for the cross pkg) against sdk109's 10.9 SDK, so the
-#       installer requires both; the cross pkg also needs Longboat for 'longboat sdk install 10.9'. Every darwin/amd64 link is external
-#       (GO_EXTLINK_ENABLED), pure-Go programs included, so clang22 and sdk109 are needed by every user.
+#       installer requires both. Every darwin/amd64 link is external (GO_EXTLINK_ENABLED), pure-Go programs included, so clang22 and
+#       sdk109 are needed by every user. Longboat is not required: sdk109 is what the wrapper uses, however it was installed (maintainer
+#       ruling 2026-11-20, check at use; the wrapper's missing-SDK message names 'sudo longboat sdk install 10.9').
 scr="$out/pkg-scripts-$variant"
 rm -rf "$scr"
 set -- --stage "$root" --product "$product" --name "$name" --group go --line "$line" --version "$PKG_VERSION" \
   --exclude "bin/$wrapper" --requires "$req" --scripts-out "$scr"
-[ "$variant" = cross ] && set -- "$@" --requires "longboat>=20261019.1"
 set -- "$@" --requires sdk109
 UPD_APP="${UPD_APP:-$upd_default}"
 if [ -d "$UPD_APP" ]; then

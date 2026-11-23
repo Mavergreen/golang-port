@@ -161,12 +161,12 @@ get() { "$sd" plist get "$(mf "$1" "$2")" "$3"; }
 echo "ok: manifests"
 
 # spec: build/package.sh -- Ruling F: the shipped wrappers call clang22, so the native pkg requires clang22 and the cross pkg
-#       clang22-cross (the cross pkg also needs longboat >= 20261019.1 for the SDK, and sdk109)
+#       clang22-cross; both require sdk109, and neither requires Longboat (maintainer ruling 2026-11-20, check at use)
 reqs() { sed -n '/<key>requires<\/key>/,/<\/array>/p' "$(mf "$1" "$2")" | sed -n 's/.*<string>\(.*\)<\/string>.*/\1/p' | sed 's/&gt;/>/g'; }
 reqs vn go$GO_LINE > "$t/rn"; reqs vx go$GO_LINE-cross > "$t/rx"
 grep -qx 'clang22' "$t/rn" || fail "native pkg must require clang22, requires: $(tr '\n' ' ' < "$t/rn")"
 grep -qx 'clang22-cross' "$t/rx" || fail "cross pkg must require clang22-cross, requires: $(tr '\n' ' ' < "$t/rx")"
-grep -qx 'longboat>=20261019.1' "$t/rx" || fail "cross pkg must require longboat>=20261019.1, requires: $(tr '\n' ' ' < "$t/rx")"
+grep -q 'longboat' "$t/rx" && fail "cross pkg must not require Longboat (check at use), requires: $(tr '\n' ' ' < "$t/rx")"
 grep -qx 'sdk109' "$t/rx" || fail "cross pkg must require sdk109, requires: $(tr '\n' ' ' < "$t/rx")"
 grep -qx 'sdk109' "$t/rn" || fail "native pkg must require sdk109 (its wrapper names it), requires: $(tr '\n' ' ' < "$t/rn")"
 grep -q 'clang22-cross' "$t/rn" && fail "native pkg must not require clang22-cross"
