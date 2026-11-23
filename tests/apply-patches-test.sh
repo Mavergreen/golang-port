@@ -66,4 +66,15 @@ rm -rf "$t/line"; cp -R "$here/tests/fixtures/line-127" "$t/line"; rm -rf "$t/li
 rc=0; LINE_ROOT="$t/line" MAVERICKS_WORK="$w" sh "$here/build/apply-patches.sh" >"$t/out" 2>&1 || rc=$?
 [ "$rc" != 0 ] && grep -q 'no patches' "$t/out" || fail "missing patches not reported"
 
+# spec: build/apply-patches.sh -- a port with an empty or absent patches/ refuses before touching the tree (go.env needs patch 0020)
+mkdir "$t/port" && cp -R "$here/build" "$here/apply-overlay.sh" "$here/overlay" "$t/port/" && mkdir "$t/port/patches"
+for state in empty absent; do
+  [ $state = absent ] && rmdir "$t/port/patches"
+  w="$t/w-port-$state"; mkgo "$w/go"
+  rm -rf "$t/line"; cp -R "$here/tests/fixtures/line-127" "$t/line"
+  rc=0; LINE_ROOT="$t/line" MAVERICKS_WORK="$w" sh "$t/port/build/apply-patches.sh" >"$t/out" 2>&1 || rc=$?
+  [ "$rc" != 0 ] && grep -q "no patches in .*/port/patches$" "$t/out" || fail "$state port patches/ not refused: rc=$rc $(cat "$t/out")"
+  grep -q '// hook applied' "$w/go/src/crypto/x509/root.go" && fail "$state port patches/: a line patch was applied before refusing"
+done
+
 echo "PASS: apply-patches"

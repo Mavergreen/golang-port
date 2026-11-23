@@ -24,7 +24,7 @@ refuses that shape as relative, so no existing go.env means anything else by it.
  			envCache.goroot[string(key)] = string(val)
  			// In the GOROOT/go.env file, do not overwrite fields loaded from the user's go/env file.
  			if _, ok := envCache.m[string(key)]; ok {
-@@ -418,6 +420,26 @@
+@@ -418,6 +420,28 @@
  	}
  }
  
@@ -45,7 +45,9 @@ refuses that shape as relative, so no existing go.env means anything else by it.
 +	if s, err := quoted.Join(args); err == nil {
 +		return s
 +	}
-+	return val
++	// An argument holds both quote characters, so no quoting can spell it: keep the
++	// resolved path unquoted rather than the relative one, which names no file here.
++	return strings.Join(args, " ")
 +}
 +
  // Getenv gets the value for the configuration key.

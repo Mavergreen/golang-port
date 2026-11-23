@@ -11,6 +11,8 @@ export PORT_DIR
 
 pdir="$LINE_ROOT/patches"
 ls "$pdir"/*.patch >/dev/null 2>&1 || { echo "apply-patches.sh: no patches in $pdir" >&2; exit 1; }
+# spec: PORT.md, port patch 0020 -- the port's own patches are not optional: the products' go.env names CC relative to GOROOT
+ls "$PORT_DIR"/patches/*.patch >/dev/null 2>&1 || { echo "apply-patches.sh: no patches in $PORT_DIR/patches" >&2; exit 1; }
 [ -f "$WORK/go/src/make.bash" ] || { echo "apply-patches.sh: no Go tree at $WORK/go; run build/fetch-go.sh first" >&2; exit 1; }
 
 # spec: PORT.md, the build chain -- shipyard's apply_patches.sh (-p1, -F 0) is not used: the hook patches are traditional -p0
