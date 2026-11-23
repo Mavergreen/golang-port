@@ -68,4 +68,16 @@ sh "$t/port/apply-overlay.sh" "$t/g4" /x/etc/openssl >"$t/out" 2>&1 || rc=$?
 [ "$rc" = 1 ] || fail "no placeholder: exit $rc, want 1"
 grep -q 'substituted nothing' "$t/out" || fail "no placeholder: message lacks 'substituted nothing'"
 
+# spec: apply-overlay.sh -- the copies are 0644 whatever the port's own files are (a git archive unpacked as root keeps 0664)
+mkdir -p "$t/port2"
+cp "$here/apply-overlay.sh" "$t/port2/"
+cp -R "$here/overlay" "$t/port2/overlay"
+find "$t/port2/overlay" -type f -exec chmod 666 {} +
+mkgo "$t/g5"
+(umask 000 && sh "$t/port2/apply-overlay.sh" "$t/g5" /x/etc/openssl) >"$t/out" 2>&1 || fail "mode run: $(cat "$t/out")"
+w="$(cd "$t/g5" && find src -type f ! -path src/crypto/x509/root.go \( -perm -020 -o -perm -002 -o -perm -100 \) | sed -n 1p)"
+[ -z "$w" ] || fail "$w kept a group or world write or an execute bit; overlay files are 0644"
+n="$(cd "$t/g5" && find src -type f ! -path src/crypto/x509/root.go -perm -644 | wc -l | tr -d ' ')"
+[ "$n" = 6 ] || fail "want all six overlay files at least 0644, $n are"
+
 echo "PASS: apply-overlay.sh copies, substitutes, and refuses safely"

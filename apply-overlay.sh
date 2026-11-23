@@ -42,6 +42,9 @@ for f in $files; do
     sed "s#@SSLDIR@#$ssldir#g" "$ovl/$f" > "$goroot/$f.tmp"
     mv "$goroot/$f.tmp" "$goroot/$f"
   fi
+  # spec: PORT.md, the build chain -- every overlay file is source or testdata: 0644 whatever mode the port arrived with (a git archive
+  #       unpacked as root keeps 0664) or the umask sed wrote under, so the shipped tree's modes are the same on every host
+  chmod 644 "$goroot/$f"
 done
 
 echo "golang-port: overlay applied to $goroot (@SSLDIR@ -> $ssldir)" >&2

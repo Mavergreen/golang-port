@@ -306,6 +306,9 @@ Rules the chain keeps and differences a reader will notice; none is a regression
   `- standalone-text:src/crypto/x509/root_keychainunion_darwin*.go: <reason>` under its INGREDIENTS.md `## Conformance
   deviations` (shipyard 1.0.845 and later), and package.sh hands the checker that file with `--repo "$LINE_ROOT"`. The check
   runs after `build_component_pkg.sh` normalises the root's modes, so the archive's modes are the pkg's.
+- **Modes do not depend on how the port arrived.** `apply-overlay.sh` writes every overlay file 0644: a port unpacked from a
+  `git archive` as root keeps 0664, and shipyard's build-equivalence (1.0.845 and later) compares modes across hosts
+  (`tests/apply-overlay-test.sh`).
 - **Linux installs the C toolchain with install@v1 `products:`**, the same as a Mac: `clang22@<version> sdk109@<tag>
   recaulk@<version>` (pins from the line's `components/*/version`), each at its pkg's prefix with that pkg's `mavergreen.plist`
   (shipyard 1.0.822 and later). The port carries no installer of its own; the refusals in `build/c-toolchain.sh` and the
