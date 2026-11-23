@@ -1,0 +1,1 @@
+The Go toolchains for Mavericks now work from any folder they are copied or unpacked into, and find their own C compiler without CC being set.

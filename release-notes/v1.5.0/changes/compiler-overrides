@@ -1,0 +1,1 @@
+A clang22 or 10.9 SDK kept somewhere other than its usual place can be named with MAVERGREEN_CLANG22, MAVERGREEN_CLANG22_CROSS or MAVERGREEN_SDK109.
