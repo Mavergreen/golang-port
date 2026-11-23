@@ -1,9 +1,9 @@
 #!/bin/sh
 # platform: host-agnostic
 # spec: PORT.md, the build chain -- build/build-linux-cross.sh: go1NN-cross-<version>-linux-x86_64.tar.gz, the toolchain a Linux CI runner
-#       uses to build 10.9 darwin/amd64 programs (product go1NN-cross, install@v1 extracts it at /usr/local/mavergreen/go1NN-cross).
+#       uses to build 10.9 darwin/amd64 programs (product go1NN-cross; install@v1 `products:` installs it at /usr/local/mavergreen/go1NN-cross).
 #       usage: LINE_ROOT=<line checkout> [GOROOT_BOOTSTRAP=<go>] [LINUX_CROSS_OUT=<dir>] [SOURCE_DATE_EPOCH=<n>] sh build/build-linux-cross.sh
-#       Leaves $WORK/staging-linux/go1NN-cross, and writes the archive and build-info-linux-cross.txt to $LINUX_CROSS_OUT (default
+#       Leaves $WORK/staging-linux/opt/mavergreen/go1NN-cross, and writes the archive and build-info-linux-cross.txt to $LINUX_CROSS_OUT (default
 #       $WORK/out); prints the archive's path. Runs build-builder.sh itself (which reuses a matching builder).
 set -eu
 PORT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -17,6 +17,8 @@ export MAVERICKS_ROOT
 . "$PORT_DIR/build/toolchain-lib.sh"
 RECAULK_LIB="$(tl_cc_var recaulk)"
 root="go$GO_LINE-cross"
+# spec: PORT.md, the build chain -- clang22 22.1.8-mavericks.26 is the first release whose prefix has dsymutil, which the wrapper answers for
+LINUX_CLANG22_FLOOR=22.1.8-mavericks.26
 # spec: PORT.md, the build chain -- the archive holds the linux/amd64 toolchain, rebuilt from the builder the same way on EVERY host
 #       (cgo off: Go internal-links it, and -trimpath keeps the build host's paths out), so a Linux CI box, a 10.9 Mac and an Apple
 #       Silicon one produce the same bytes. make.bash's own linux/amd64 binaries are not staged: they carry another build
@@ -29,10 +31,13 @@ export GOOS GOARCH CGO_ENABLED
 ( cd "$WORK/go/src" && "$WORK/go/bin/go" install -trimpath cmd )
 unset GOOS GOARCH CGO_ENABLED
 
+# spec: PORT.md, the build chain -- staged first where its pkg would put it, so shipyard's stage_product.sh renders the manifest as it does for
+#       every pkg; the archive then holds it under opt/mavergreen/go1NN-cross, the one prefix shipyard's product-tar.py accepts.
 stage="$WORK/staging-linux"
-dest="$stage/$root"
-rm -rf "$stage"
-mkdir -p "$stage"
+pstage="$WORK/staging-linux-pkg"
+dest="$pstage$CROSS_PREFIX"
+rm -rf "$stage" "$pstage"
+mkdir -p "$stage/opt/mavergreen"
 tl_stage linux amd64 "$dest"
 mkdir -p "$dest/lib"
 cp "$RECAULK_LIB" "$dest/lib/librecaulk.a"
@@ -65,6 +70,20 @@ sh "$SHIPYARD_SCRIPTS/build-info.sh" "$dest/build-info-linux-cross.txt" \
   $(sed -n 's/^\([a-z0-9]*\)=\(.*\)$/built_\1=\2/p' "$WORK/cc/versions")
 cp "$dest/build-info-linux-cross.txt" "$out/build-info-linux-cross.txt"
 
+# spec: PORT.md, the build chain -- the archive carries its own mavergreen.plist, so install@v1 `products:` takes the manifest from it rather than
+#       from the cross pkg (whose requires, clang22-cross and Longboat, are a Mac's). Same identifier, product, name, group, line and
+#       version as the cross pkg's; it requires what the Linux wrapper calls: clang22 at its prefix, from the first release that ships
+#       dsymutil (Go's darwin link asks for it), and the 10.9 SDK.
+gominor="${GO_VERSION%.*}"
+sh "$SHIPYARD_SCRIPTS/stage_product.sh" --stage "$pstage" --product "$root" --name "Go $gominor cross toolchain for Mavericks" \
+  --group go --line "$GO_LINE-cross" --version "$PKG_VERSION" --exclude bin/mavericks-cross-clang \
+  --requires "clang22>=$LINUX_CLANG22_FLOOR" --requires sdk109 --scripts-out "$WORK/linux-cross-scripts" >&2
+[ -f "$dest/mavergreen.plist" ] || tl_die "stage_product.sh left no $dest/mavergreen.plist"
+rm -rf "$WORK/linux-cross-scripts"
+mv "$dest" "$stage/opt/mavergreen/$root"
+rm -rf "$pstage"
+dest="$stage/opt/mavergreen/$root"
+
 # spec: PORT.md, the build chain -- reproducible: files sorted by name, owner 0:0 (numeric), every mtime SOURCE_DATE_EPOCH, gzip -n.
 #       These are GNU tar's options; 10.9's bsdtar has none of them (and writes another format), so a host without GNU tar
 #       (gtar, or tar --version saying GNU) stops here, with the staging in place.
@@ -74,6 +93,6 @@ for c in tar gtar; do
   if "$c" --version 2>/dev/null | grep -q 'GNU tar'; then tar_cmd="$c"; break; fi
 done
 [ -n "$tar_cmd" ] || tl_die "no GNU tar (tar or gtar) on this host, so no reproducible archive; the staging is $dest"
-( cd "$stage" && "$tar_cmd" --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$sde" --format=gnu -cf - "$root" ) | gzip -n -9 > "$archive.tmp"
+( cd "$stage" && "$tar_cmd" --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$sde" --format=gnu -cf - opt ) | gzip -n -9 > "$archive.tmp"
 mv "$archive.tmp" "$archive"
 echo "$archive"

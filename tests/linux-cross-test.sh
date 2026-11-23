@@ -3,8 +3,9 @@
 # spec: PORT.md, the build chain -- the go1NN-cross linux-x86_64 archive (build/build-linux-cross.sh). A maintainer-supplied archive is
 #       checked; the tests need one, so without it this skips (77), as every test that needs a built product does.
 #       usage: LINUX_CROSS_TARBALL=<archive> [LINUX_CROSS_TARBALL_B=<second build of the same inputs>] sh tests/linux-cross-test.sh
-#       Where a Linux x86_64 host has clang22 at $MAVERGREEN_CLANG22 (default /usr/local/mavergreen/clang22) and sdk109, it also
-#       extracts the archive and builds tests/fixtures/hello with it; elsewhere that part skips and says so.
+#       With python3 and shipyard's scripts (SHIPYARD_SCRIPTS), it installs the archive through product-tar.py, install@v1's own
+#       unpacker. Where a Linux x86_64 host has clang22 at $MAVERGREEN_CLANG22 (default /usr/local/mavergreen/clang22) and sdk109, it
+#       also builds tests/fixtures/hello with the installed tree; elsewhere that part skips and says so.
 here=$(cd "$(dirname "$0")/.." && pwd)
 tb="${LINUX_CROSS_TARBALL:-}"
 [ -n "$tb" ] && [ -f "$tb" ] || { echo "set LINUX_CROSS_TARBALL to a built go1NN-cross-*-linux-x86_64.tar.gz -- skipping"; exit 77; }
@@ -17,26 +18,43 @@ fail() { echo "FAIL: $*"; exit 1; }
 base=${tb##*/}
 line=$(printf '%s' "$base" | sed -n 's/^go\([0-9][0-9]*\)-cross-.*-linux-x86_64\.tar\.gz$/\1/p')
 [ -n "$line" ] || fail "$base is not named go<line>-cross-<version>-linux-x86_64.tar.gz"
+version=$(printf '%s' "$base" | sed -n 's/^go[0-9][0-9]*-cross-\(.*\)-linux-x86_64\.tar\.gz$/\1/p')
 root="go$line-cross"
+p="opt/mavergreen/$root"
 
-# spec: build/build-linux-cross.sh -- one top directory, and nothing for the host's own toolchain in pkg/tool
+# spec: build/build-linux-cross.sh -- every entry is under opt/mavergreen/go1NN-cross (or is one of its two parent directories): the one
+#       prefix shipyard's product-tar.py accepts. Nothing for the host's own toolchain in pkg/tool.
 tar -tzf "$tb" > "$t/list" || fail "cannot list $tb"
-tops=$(sed 's|/.*||' "$t/list" | sort -u)
-[ "$tops" = "$root" ] || fail "top directories are '$tops', want only $root"
-grep -q "^$root/pkg/tool/darwin_" "$t/list" && fail "pkg/tool/darwin_* is in the archive"
-grep -q "^$root/pkg/tool/linux_amd64/link$" "$t/list" || fail "no pkg/tool/linux_amd64/link in the archive"
-for f in bin/go bin/gofmt bin/mavericks-cross-clang lib/librecaulk.a go.env build-info-linux-cross.txt; do
-  grep -q "^$root/$f$" "$t/list" || fail "no $f in the archive"
+stray=$(sed 's|/$||' "$t/list" | grep -v -x -e opt -e opt/mavergreen -e "$p" | grep -v "^$p/" || true)
+[ -z "$stray" ] || fail "entries outside $p/: $(printf '%s' "$stray" | head -5 | tr '\n' ' ')"
+grep -q "^$p/pkg/tool/darwin_" "$t/list" && fail "pkg/tool/darwin_* is in the archive"
+grep -q "^$p/pkg/tool/linux_amd64/link$" "$t/list" || fail "no pkg/tool/linux_amd64/link in the archive"
+for f in bin/go bin/gofmt bin/mavericks-cross-clang lib/librecaulk.a go.env build-info-linux-cross.txt mavergreen.plist; do
+  grep -q "^$p/$f$" "$t/list" || fail "no $f in the archive"
 done
 echo "ok: layout"
 
+# spec: build/build-linux-cross.sh -- the archive's own mavergreen.plist: the cross pkg's identity at this version, requiring clang22 from the
+#       first release with dsymutil and sdk109 (what the Linux wrapper calls), never the Mac's clang22-cross or Longboat
+tar -xzf "$tb" -C "$t" "$p/mavergreen.plist" || fail "cannot extract mavergreen.plist"
+pl="$t/$p/mavergreen.plist"
+pkey() { awk -v k="<key>$1</key>" 'f { sub(/^[[:space:]]*<string>/, ""); sub(/<\/string>.*$/, ""); print; exit } index($0, k) { f = 1 }' "$pl"; }
+[ "$(pkey identifier)" = "dev.mavergreen.golang.$root" ] || fail "plist identifier is '$(pkey identifier)', want dev.mavergreen.golang.$root"
+[ "$(pkey product)" = "$root" ] || fail "plist product is '$(pkey product)', want $root"
+[ "$(pkey version)" = "$version" ] || fail "plist version is '$(pkey version)', want $version (the archive's)"
+[ "$(pkey line)" = "$line-cross" ] || fail "plist line is '$(pkey line)', want $line-cross"
+reqs=$(awk '/<key>requires<\/key>/ { f = 1; next } f && /<\/array>/ { exit } f && /<string>/ { sub(/^[[:space:]]*<string>/, ""); sub(/<\/string>.*$/, ""); print }' "$pl" \
+  | sed -e 's/&gt;/>/g' -e 's/&lt;/</g' -e 's/&amp;/\&/g' | tr '\n' ' ')
+[ "$reqs" = "clang22>=22.1.8-mavericks.26 sdk109 " ] || fail "plist requires '$reqs', want 'clang22>=22.1.8-mavericks.26 sdk109'"
+echo "ok: mavergreen.plist ($root $version, requires $reqs)"
+
 # spec: build/build-linux-cross.sh -- the build record names the port version too (the port's UPSTREAM_VERSION)
-tar -xzf "$tb" -C "$t" "$root/build-info-linux-cross.txt" || fail "cannot extract build-info"
-grep -qx "port_version=$(tr -d "[:space:]" < "$here/UPSTREAM_VERSION")" "$t/$root/build-info-linux-cross.txt" || fail "build-info lacks port_version: $(cat "$t/$root/build-info-linux-cross.txt")"
+tar -xzf "$tb" -C "$t" "$p/build-info-linux-cross.txt" || fail "cannot extract build-info"
+grep -qx "port_version=$(tr -d "[:space:]" < "$here/UPSTREAM_VERSION")" "$t/$p/build-info-linux-cross.txt" || fail "build-info lacks port_version: $(cat "$t/$p/build-info-linux-cross.txt")"
 
 # spec: build/build-linux-cross.sh -- the archive's bin/go is a Linux x86-64 program (ELF, e_machine 0x3e), whatever host built it
-tar -xzf "$tb" -C "$t" "$root/bin/go" || fail "cannot extract bin/go"
-hd=$(od -An -tx1 -N20 "$t/$root/bin/go" | tr -d ' \n')
+tar -xzf "$tb" -C "$t" "$p/bin/go" || fail "cannot extract bin/go"
+hd=$(od -An -tx1 -N20 "$t/$p/bin/go" | tr -d ' \n')
 case "$hd" in 7f454c46*) ;; *) fail "bin/go is not an ELF file ($hd)" ;; esac
 [ "$(printf '%s' "$hd" | cut -c37-40)" = 3e00 ] || fail "bin/go is not x86-64 (ELF header $hd)"
 echo "ok: bin/go is an ELF x86-64"
@@ -50,6 +68,21 @@ else
   echo "skip: LINUX_CROSS_TARBALL_B not set, no reproducibility check"
 fi
 
+# spec: build/build-linux-cross.sh -- install@v1 `products:` unpacks a Linux archive with shipyard's product-tar.py into
+#       <root>/usr/local/mavergreen/go1NN-cross; it refuses any entry outside the product prefix
+x="$t/root/usr/local/mavergreen/$root"
+pt="${SHIPYARD_SCRIPTS:-}/product-tar.py"
+if [ -n "${SHIPYARD_SCRIPTS:-}" ] && [ -f "$pt" ] && command -v python3 >/dev/null 2>&1; then
+  mkdir -p "$t/root/usr/local/mavergreen"
+  python3 "$pt" "$tb" "$root" "$(shasum -a 256 "$tb" | awk '{print $1}')" "$x" || fail "product-tar.py refused $tb"
+  [ -x "$x/bin/go" ] && [ -f "$x/mavergreen.plist" ] || fail "product-tar.py left no bin/go and mavergreen.plist at $x"
+  echo "ok: product-tar.py installs it at <root>/usr/local/mavergreen/$root"
+else
+  echo "skip: no python3 or no SHIPYARD_SCRIPTS/product-tar.py, so the archive is extracted with tar"
+  mkdir -p "$t/x" && tar -xzf "$tb" -C "$t/x" || fail "cannot extract $tb"
+  mkdir -p "$t/root/usr/local/mavergreen" && mv "$t/x/$p" "$x"
+fi
+
 cl="${MAVERGREEN_CLANG22:-/usr/local/mavergreen/clang22}"
 if [ "$(uname -s)" != Linux ] || [ "$(uname -m)" != x86_64 ] || [ ! -x "$cl/bin/clang" ] || [ ! -d /usr/local/mavergreen/sdk109/SDKs ]; then
   echo "skip: extract-and-build needs a Linux x86_64 host with clang22 ($cl) and sdk109"
@@ -57,8 +90,6 @@ if [ "$(uname -s)" != Linux ] || [ "$(uname -m)" != x86_64 ] || [ ! -x "$cl/bin/
   exit 0
 fi
 
-mkdir "$t/x" && tar -xzf "$tb" -C "$t/x" || fail "cannot extract $tb"
-x="$t/x/$root"
 # spec: build/build-linux-cross.sh -- go.env bakes the install@v1 prefix as CC; an archive extracted elsewhere sets CC itself
 want_cc="/usr/local/mavergreen/$root/bin/mavericks-cross-clang"
 grep -q "^CC=$want_cc\$" "$x/go.env" || fail "go.env has no CC=$want_cc: $(tail -4 "$x/go.env" | tr '\n' ' ')"
@@ -86,6 +117,14 @@ mv=$("$cl/bin/llvm-otool" -l "$t/hello.bin" | awk '
 [ "$mv" = 10.9 ] || fail "hello has minos '$mv', want 10.9"
 "$cl/bin/llvm-nm" "$t/hello.bin" | grep -q ' [Tt] _clock_gettime$' || fail "hello does not define _clock_gettime (Recaulk's polyfill)"
 echo "ok: hello is Mach-O x86_64, minos 10.9, external link, _clock_gettime defined"
+
+# spec: build/build-linux-cross.sh -- a cgo program builds too: its C goes through the wrapper to clang22 and the 10.9 SDK
+mkdir "$t/hellocgo" && cp "$here/tests/hello-cgo/main.go" "$t/hellocgo/" && printf 'module hellocgo\n\ngo 1.21\n' > "$t/hellocgo/go.mod"
+( cd "$t/hellocgo" && gorun "$x/bin/go" build -o "$t/hellocgo.bin" . ) > "$t/cgo.out" 2>&1 || fail "cgo go build failed: $(cat "$t/cgo.out")"
+"$cl/bin/llvm-nm" "$t/hellocgo.bin" | grep -q ' T __cgo_[0-9a-f]*_Cfunc_my_pid$' || fail "hello-cgo has no cgo stub for my_pid: its C part was not compiled in"
+mv=$("$cl/bin/llvm-otool" -l "$t/hellocgo.bin" | awk '$1 == "cmd" { c = $2; next } c == "LC_VERSION_MIN_MACOSX" && $1 == "version" { m = $2 } c == "LC_BUILD_VERSION" && $1 == "minos" { m = $2 } END { print m }')
+[ "$mv" = 10.9 ] || fail "hello-cgo has minos '$mv', want 10.9"
+echo "ok: hello-cgo is a 10.9 Mach-O with its C function"
 
 # spec: build/write-wrappers.sh -- Review Focus 4: no clang22 where the wrapper looks, and `go build` fails naming clang22 (it
 #       does not fall back to the default path)

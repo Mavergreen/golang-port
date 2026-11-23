@@ -258,9 +258,15 @@ Rules the chain keeps and differences a reader will notice; none is a regression
   and linux are `CGO_ENABLED=0`), so nobody should add them "for safety".
 - **The builder's `bin/` is overwritten by the product build:** `build-native.sh` on a darwin host, `build-linux-cross.sh` on a
   Linux host, install the product's binaries over it (same Go version, so later builds are unaffected).
-- **The Linux archive** (`go1NN-cross-<version>-linux-x86_64.tar.gz`): its contents are identical whichever host built it, but its
-  `.tar.gz` bytes differ per host (the gzip implementation), so compare trees, not archives. Its `go.env` names `CC`
-  absolutely, at `/usr/local/mavergreen/go1NN-cross/bin/mavericks-cross-clang`: extract it elsewhere and set `CC`.
+- **The Linux archive** (`go1NN-cross-<version>-linux-x86_64.tar.gz`) is laid out for install@v1 `products:`: every entry is under
+  `opt/mavergreen/go1NN-cross/` (shipyard's `product-tar.py` refuses anything else), and it carries its own
+  `opt/mavergreen/go1NN-cross/mavergreen.plist`, rendered by shipyard's `stage_product.sh` with the cross pkg's identifier,
+  product, name, line and version but Linux requires: `clang22>=22.1.8-mavericks.26` (the first with dsymutil, which the Linux
+  wrapper answers from clang22's prefix) and `sdk109`. Listing `go1NN-cross@<version>` under install@v1 `products:` on a Linux
+  runner installs it at `/usr/local/mavergreen/go1NN-cross` (`tests/linux-cross-test.sh` installs it through `product-tar.py`).
+  Its contents are identical whichever host built it, but its `.tar.gz` bytes differ per host (the gzip implementation), so
+  compare trees, not archives. Its `go.env` names `CC` absolutely, at `/usr/local/mavergreen/go1NN-cross/bin/mavericks-cross-clang`:
+  unpack it anywhere else and set `CC`.
 - **Linux installs the C toolchain with install@v1 `products:`**, the same as a Mac: `clang22@<version> sdk109@<tag>
   recaulk@<version>` (pins from the line's `components/*/version`), each at its pkg's prefix with that pkg's `mavergreen.plist`
   (shipyard 1.0.822 and later). The port carries no installer of its own; the refusals in `build/c-toolchain.sh` and the
