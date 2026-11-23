@@ -8,7 +8,10 @@ on Linux, a modern Mac or 10.9. Every Mavergreen Go line (`golang-126`, `golang-
 
 **Change it:** edit, then try it in a line without releasing:
 
-    GOLANG_PORT_DIR=../mavergreen-golang-port sh tests/trust/unit-trust.sh
+    LINE_ROOT=../mavergreen-golang-127 sh build/build-builder.sh
+    LINE_ROOT=../mavergreen-golang-127 sh tests/trust-static.sh
+
+then, in the 10.9 guest with the line's pkg installed, `GO_LINE=127 sh tests/on-target/run.sh`.
 
 **Release it:** bump `UPSTREAM_VERSION`, push `main`. If the lines' patches must change too, it's a major bump.
 

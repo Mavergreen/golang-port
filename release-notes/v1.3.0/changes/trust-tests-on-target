@@ -1,0 +1,1 @@
+The checks run on a real Mavericks machine now also prove the certificate trust tests pass there, and that each expected skip gives its own reason.

@@ -99,12 +99,12 @@ T_STRICT=1
 Q="$t/mg-clang"; mkprefix "$Q"; mkplist "$Q/clang22" 22.1.7-mavericks.1
 run "$Q"
 [ "$rc" = 1 ] || fail "wrong clang22: exit $rc"
-for s in clang22 22.1.7-mavericks.1 "$want_clang" "provision-linux.sh clang22@$want_clang"; do has "$t/err" "$s" "wrong clang22"; done
+for s in clang22 22.1.7-mavericks.1 "$want_clang" "list clang22@$want_clang under install@v1 products:"; do has "$t/err" "$s" "wrong clang22"; done
 
 Q="$t/mg-recaulk"; mkprefix "$Q"; mkplist "$Q/recaulk" 20200101.9
 run "$Q"
 [ "$rc" = 1 ] || fail "wrong recaulk: exit $rc"
-for s in recaulk 20200101.9 "$want_recaulk" "provision-linux.sh recaulk@$want_recaulk"; do has "$t/err" "$s" "wrong recaulk"; done
+for s in recaulk 20200101.9 "$want_recaulk" "list recaulk@$want_recaulk under install@v1 products:"; do has "$t/err" "$s" "wrong recaulk"; done
 
 # spec: build/c-toolchain.sh -- a missing x86_64 slice refuses
 unset T_STRICT

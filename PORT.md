@@ -15,8 +15,9 @@ Before changing or dropping any carried change during a port to a new Go minor: 
 
 ## Trust invariants (crypto/x509 on darwin)
 
-These hold on every line. Tests named `TestKeychainUnion*` pin them; `tests/trust/unit-trust.sh`
-requires those tests to run and pass. These change only through a trust-policy brainstorm, never
+These hold on every line. Tests named `TestKeychainUnion*` pin them; `tests/on-target/run.sh` (in the
+10.9 guest) requires those tests to run and pass, and `tests/trust-static.sh` (on the lines' Linux build) runs the build-tag-free
+ones and checks the patched source. These change only through a trust-policy brainstorm, never
 inside a port.
 
 1. **The system roots are the keychain union:** anchors from all three trust domains (user, admin,
@@ -160,7 +161,8 @@ and `TestLoadSystemCertsLoadColonSeparatedDirs` (env-exclusive roots, which we d
 invariant 3), and `TestIssue51759` (verify_test.go) and `TestHybridPool` (hybrid_pool_test.go), which
 assume Apple's verifier is the default (Apple's error strings; AIA-fetched intermediates —
 invariants 1, 5). `TestSSLCertEnvOverride` keeps running and asserts invariant 4 on darwin.
-`tests/trust/unit-trust.sh` requires all four skips. *Reconsider:* when upstream's tests stop
+`tests/on-target/run.sh` requires all four skips, each with its exact reason, and `TestSSLCertEnvOverride` passing
+(`tests/on-target-trust-test.sh` proves the check). *Reconsider:* when upstream's tests stop
 asserting upstream's darwin semantics.
 
 ### overlay/src/crypto/x509/root_keychainunion.go
@@ -213,7 +215,7 @@ paths it embeds reproducible without the flag, or `tests/cross-host-bytes.sh` st
 Build rule. Go hashes the C compiler's absolute path into build IDs, so every host reaches the compiler, the SDK and Recaulk
 at the family's installed prefixes: `/usr/local/mavergreen/clang22`, `/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk`,
 `/usr/local/mavergreen/recaulk`, and the products' own `/usr/local/mavergreen/go1NN` and `go1NN-cross`. On Linux,
-`build/provision-linux.sh` puts each at its pkg's prefix until install@v1 `products:` can (below). `build/c-toolchain.sh` checks each against the line's pin
+install@v1 `products:` puts each at its pkg's prefix, as it does on a Mac. `build/c-toolchain.sh` checks each against the line's pin
 (`components/<name>/version`) and writes the build wrapper `$WORK/cc/bin/clang`; nothing falls back to a cache path.
 The wrapper may sit anywhere because Go reaches it by the bare name `clang` on `PATH`, but `build/env.sh` spells `$WORK` clean (one
 slash between parts, no `./`, no trailing slash; relative or `..` refuses), since an unclean GOROOT leaves the work path in
@@ -259,16 +261,22 @@ Rules the chain keeps and differences a reader will notice; none is a regression
 - **The Linux archive** (`go1NN-cross-<version>-linux-x86_64.tar.gz`): its contents are identical whichever host built it, but its
   `.tar.gz` bytes differ per host (the gzip implementation), so compare trees, not archives. Its `go.env` names `CC`
   absolutely, at `/usr/local/mavergreen/go1NN-cross/bin/mavericks-cross-clang`: extract it elsewhere and set `CC`.
-- **Linux provisions with `build/provision-linux.sh`, for now.** install@v1 `products:` installs with macOS's `installer`, so on
-  Linux `sudo -E sh build/provision-linux.sh [--root DIR] clang22@<version> sdk109 recaulk@<version>` (pins from the line's
-  `components/*/version`) puts each product at its pkg's prefix with the `mavergreen.plist` that pkg installs: clang22 from its
-  linux-x86_64 archive and the plist from its release pkg, the pinned SDK with the plist rendered as Longboat renders it, and
-  Recaulk's pkg component. A product already at its version is kept; Darwin refuses. Exit: shipyard's queue entry "install@v1 `products:` learns Linux assets"; then the script is deleted.
+- **Linux installs the C toolchain with install@v1 `products:`**, the same as a Mac: `clang22@<version> sdk109@<tag>
+  recaulk@<version>` (pins from the line's `components/*/version`), each at its pkg's prefix with that pkg's `mavergreen.plist`
+  (shipyard 1.0.822 and later). The port carries no installer of its own; the refusals in `build/c-toolchain.sh` and the
+  Linux wrapper name `install@v1 products:`.
 - **On-target builds link without warnings.** `tests/on-target/run.sh` fails any check whose build output, stderr included,
   holds `newer than target minimum` or any `ld64.lld: warning:`, naming the line (`tests/on-target/build-output.sh`,
   proven by `tests/on-target-output-test.sh`). The lines' patch 0019 removes the `go.o has version 13.0.0` warning every
   external link used to print.
-- **Tests that need a built product skip (77) without one** (`cross-vet.sh`, `linux-cross-test.sh`, `updater-test.sh`,
+- **The trust gates are split by what each host can prove.** The lines' Linux build job runs `tests/trust-static.sh` on the
+  patched `$WORK/go`: the source greps (`SecTrustCreateWithCertificates(certs, sslPolicy)`, the 10.9 fix; `keychainUnionPlatformRoots();
+  handled`, patch 0016), `crypto/x509` building for linux and windows (the overlay's `!darwin` stub), and the build-tag-free
+  `KeychainUnion` and fallback tests on the host. Everything that needs darwin is check 2 of `tests/on-target/run.sh` in the 10.9
+  guest: >=27 `KeychainUnion` passes, `TestFallback`, `TestFallbackPanic`, `TestSSLCertEnvOverride`, patch 0018's four skips with
+  their reasons, and no other skip. Together they assert everything the lines' macOS-runner `tests/trust/unit-trust.sh` did.
+  *Reconsider:* if a line builds on a macOS runner again.
+- **Tests that need a built product skip (77) without one** (`cross-vet.sh`, `trust-static.sh`, `linux-cross-test.sh`, `updater-test.sh`,
   `compat-guard.sh` without binaries). `tests/on-target/run.sh` is the other direction: it runs in the 10.9 guest against the
   installed toolchain and never skips.
 
