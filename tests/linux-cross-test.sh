@@ -101,8 +101,11 @@ gorun() { env -i PATH="$x/bin:/usr/bin:/bin" HOME="$t" GOCACHE="${GC:-$t/cache}"
 [ "$(gorun "$x/bin/go" env GOOS)" = darwin ] || fail "GOOS does not default to darwin"
 [ "$(gorun "$x/bin/go" env GOARCH)" = amd64 ] || fail "GOARCH does not default to amd64"
 [ "$(gorun "$x/bin/go" env CGO_ENABLED)" = 1 ] || fail "CGO_ENABLED does not default to 1"
-[ "$(env -i PATH=/usr/bin:/bin GOENV="$x/go.env" "$x/bin/go" env CC 2>/dev/null)" = "$want_cc" ] || \
+[ "$(env -i PATH=/usr/bin:/bin HOME="$t" GOTOOLCHAIN=local "$x/bin/go" env CC 2>/dev/null)" = "$want_cc" ] || \
   fail "go env CC is not $want_cc"
+# spec: PORT.md, port patch 0020 -- only GOROOT/go.env resolves: the same line read as the user's go env file is left as written
+[ "$(env -i PATH=/usr/bin:/bin GOENV="$x/go.env" "$x/bin/go" env CC 2>/dev/null)" = bin/mavericks-cross-clang ] || \
+  fail "a relative CC in the user's go env file was resolved"
 echo "ok: go.env defaults"
 
 cp -R "$here/tests/fixtures/hello" "$t/hello"
