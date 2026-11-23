@@ -8,7 +8,7 @@ This file serves every Mavergreen golang line, not one: the overlay files and th
 (`patches/`) live here, and the hook patches each line repo still carries are explained here too. A line's `tests/port-md-test.sh` holds
 that line's patches to this file (a hook patch with no section, or a line patch that re-adds an
 overlay file, fails the line's build). This port's own `tests/port-md-test.sh` holds this file to
-the overlay.
+the overlay and to `patches/`.
 
 Before changing or dropping any carried change during a port to a new Go minor: read its entry.
 "Upstream changed this area" is a reason to re-read, never a reason to drop.
@@ -229,10 +229,11 @@ Build rule. Go hashes the C compiler's absolute path into build IDs, so every ho
 at the family's installed prefixes: `/usr/local/mavergreen/clang22`, `/usr/local/mavergreen/sdk109/SDKs/MacOSX10.9.sdk`,
 `/usr/local/mavergreen/recaulk`, and the products' own `/usr/local/mavergreen/go1NN` and `go1NN-cross`. These are build-time paths
 only: what ships does not depend on its own prefix. Each shipped wrapper (`build/write-wrappers.sh`) finds Recaulk in `../lib`
-beside itself, from `$0` by expansion, and its clang22 and 10.9 SDK at the family prefix unless `MAVERGREEN_CLANG22`
+beside itself, from `$0` by expansion (with `CDPATH` emptied), and its clang22 and 10.9 SDK at the family prefix unless `MAVERGREEN_CLANG22`
 (`MAVERGREEN_CLANG22_CROSS` for the cross wrapper, whose compiler is another product), or `MAVERGREEN_SDK109` (an sdk109
 directory, the one holding `SDKs/MacOSX10.9.sdk`), names another; go.env names the wrapper relative to GOROOT (patch 0020).
-`tests/relocate-test.sh` moves the wrappers to a path with a space. On Linux,
+`tests/relocate-test.sh` moves the wrappers to a path with a space.
+The lookup is relative to the path the wrapper was called by, never resolved: a symlinked wrapper looks for `../lib` beside the link. On Linux,
 install@v1 `products:` puts each at its pkg's prefix, as it does on a Mac. `build/c-toolchain.sh` checks each against the line's pin
 (`components/<name>/version`) and writes the build wrapper `$WORK/cc/bin/clang`; nothing falls back to a cache path.
 The wrapper may sit anywhere because Go reaches it by the bare name `clang` on `PATH`, but `build/env.sh` spells `$WORK` clean (one
