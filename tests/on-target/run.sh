@@ -61,9 +61,12 @@ failed="$(printf '%s\n' "$out" | grep -E '^[[:space:]]*--- FAIL: ' || true)"
 if [ "$minor" -ge 27 ]; then
   skips="TestEnvVars TestLoadSystemCertsLoadColonSeparatedDirs TestIssue51759 TestHybridPool"
   absent=""
-else
+elif [ "$minor" -eq 26 ]; then
   skips="TestIssue51759 TestHybridPool"
   absent="TestEnvVars TestLoadSystemCertsLoadColonSeparatedDirs TestSSLCertEnvOverride"
+else
+  bad "no check-2 contract for Go 1.$minor: add one before a go1$minor line uses this suite"
+  skips="" absent=""
 fi
 skipre="$(printf '%s' "$skips" | tr ' ' '|')"
 # spec: on-target suite, check 2 -- patch 0018's SKIPs are expected; any other skip is a test that did not run here

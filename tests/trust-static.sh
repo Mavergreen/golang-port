@@ -48,9 +48,11 @@ grep -q 'SecTrustCreateWithCertificates(certs, sslPolicy)' "$x509/root_darwin.go
 if [ "$minor" -ge 27 ]; then
   grep -q 'keychainUnionPlatformRoots(); handled' "$x509/root.go" \
     || bad "root.go's loadSystemRoots no longer hands darwin to the keychain union (Go 1.$minor: the line's patch 0016)"
-else
+elif [ "$minor" -eq 26 ]; then
   grep -q 'return keychainUnionLoadSystemRoots()' "$x509/root_darwin.go" \
     || bad "root_darwin.go's loadSystemRoots no longer serves the keychain union (Go 1.$minor: the line's patch 0013)"
+else
+  bad "no trust-hook contract for Go 1.$minor: add one before a go1$minor line uses this check"
 fi
 
 # spec: PORT.md, the build chain -- every non-darwin GOOS builds crypto/x509 through the overlay's root_keychainunion_other.go stub
