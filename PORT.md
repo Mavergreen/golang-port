@@ -72,7 +72,7 @@ bump** of this port.
 | 0013-root-darwin-loadsystemroots-legacy-sectrust.patch (Go 1.26: `root_darwin.go`, `systemVerify` and `loadSystemRoots`) | `keychainUnionNativeVerifier`, `keychainUnionLoadSystemRoots`, `keychainUnionLegacySecTrust`, `keychainUnionLegacyEvaluate` |
 | 0013-root-darwin-legacy-sectrust.patch (Go 1.27 and later: `root_darwin.go`, `systemVerify`) | `keychainUnionLegacySecTrust`, `keychainUnionLegacyEvaluate` |
 | 0016-root-loadsystemroots-keychainunion-hook.patch (Go 1.27 and later: `root.go`, `loadSystemRoots`) | `keychainUnionPlatformRoots` (darwin: `root_keychainunion_darwin.go`; `!darwin`: `root_keychainunion_other.go`) |
-| 0018-root-test-darwin-keychainunion.patch (Go 1.27 and later: `root_test.go`, `verify_test.go`, `hybrid_pool_test.go`) | — (points readers at `TestKeychainUnion*`) |
+| 0018-root-test-darwin-keychainunion.patch (Go 1.27 and later: `root_test.go`, `verify_test.go`, `hybrid_pool_test.go`; Go 1.26: `verify_test.go`, `hybrid_pool_test.go`) | — (points readers at `TestKeychainUnion*`) |
 
 | Overlay file (new file) | Uses from hooks |
 |---|---|
@@ -156,13 +156,17 @@ Hook (Go 1.27 and later). One statement at the top of `root.go`'s `loadSystemRoo
 moves `loadSystemRoots` again.
 
 ### 0018-root-test-darwin-keychainunion.patch
-Hook (tests; Go 1.27 and later). Upstream tests that assert upstream's darwin semantics skip on darwin: `TestEnvVars`
+Hook (tests; every line, cut per minor). Upstream tests that assert upstream's darwin semantics skip on darwin: `TestEnvVars`
 and `TestLoadSystemCertsLoadColonSeparatedDirs` (env-exclusive roots, which we deliberately lack —
 invariant 3), and `TestIssue51759` (verify_test.go) and `TestHybridPool` (hybrid_pool_test.go), which
 assume Apple's verifier is the default (Apple's error strings; AIA-fetched intermediates —
 invariants 1, 5). `TestSSLCertEnvOverride` keeps running and asserts invariant 4 on darwin.
 `tests/on-target/run.sh` requires all four skips, each with its exact reason, and `TestSSLCertEnvOverride` passing
-(`tests/on-target-trust-test.sh` proves the check). *Reconsider:* when upstream's tests stop
+(`tests/on-target-trust-test.sh` proves the check). **Go 1.26** builds `TestEnvVars` and
+`TestLoadSystemCertsLoadColonSeparatedDirs` (root_unix_test.go) only for the BSDs, Linux and Solaris, never darwin, and has no
+`TestSSLCertEnvOverride` (`x509sslcertoverrideplatform` arrived in 1.27); golang-126's 0018 skips the other two with the same
+reason strings, and on 1.26 the suite requires those two skips and fails if any of the other three runs (its per-minor list is
+then stale). *Reconsider:* when upstream's tests stop
 asserting upstream's darwin semantics.
 
 ### 0020-cmd-go-goroot-relative-cc.patch
@@ -321,11 +325,13 @@ Rules the chain keeps and differences a reader will notice; none is a regression
   proven by `tests/on-target-output-test.sh`). The lines' patch 0019 removes the `go.o has version 13.0.0` warning every
   external link used to print.
 - **The trust gates are split by what each host can prove.** The lines' Linux build job runs `tests/trust-static.sh` on the
-  patched `$WORK/go`: the source greps (`SecTrustCreateWithCertificates(certs, sslPolicy)`, the 10.9 fix; `keychainUnionPlatformRoots();
-  handled`, patch 0016), `crypto/x509` building for linux and windows (the overlay's `!darwin` stub), and the build-tag-free
+  patched `$WORK/go`: the source greps (`SecTrustCreateWithCertificates(certs, sslPolicy)`, the 10.9 fix; and where the line's Go
+  minor keeps `loadSystemRoots`, read from the line's `UPSTREAM_VERSION`: root.go's `keychainUnionPlatformRoots(); handled`
+  (patch 0016) from Go 1.27, root_darwin.go's `return keychainUnionLoadSystemRoots()` (Go 1.26's patch 0013), one place per
+  minor, never either; `tests/trust-static-test.sh` proves it with both line fixtures), `crypto/x509` building for linux and windows (the overlay's `!darwin` stub), and the build-tag-free
   `KeychainUnion` and fallback tests on the host. Everything that needs darwin is check 2 of `tests/on-target/run.sh` in the 10.9
-  guest: >=27 `KeychainUnion` passes, `TestFallback`, `TestFallbackPanic`, `TestSSLCertEnvOverride`, patch 0018's four skips with
-  their reasons, and no other skip. Together they assert everything the lines' macOS-runner `tests/trust/unit-trust.sh` did.
+  guest: >=27 `KeychainUnion` passes, `TestFallback`, `TestFallbackPanic`, `TestSSLCertEnvOverride` (Go 1.27 and later), patch
+  0018's skips with their reasons (four from 1.27; on 1.26 the two that exist on darwin), and no other skip. Together they assert everything the lines' macOS-runner `tests/trust/unit-trust.sh` did.
   *Reconsider:* if a line builds on a macOS runner again.
 - **Tests that need a built product skip (77) without one** (`cross-vet.sh`, `trust-static.sh`, `linux-cross-test.sh`,
   `standalone-smoke.sh`, `updater-test.sh`, `compat-guard.sh` without binaries). `tests/on-target/run.sh` is the other

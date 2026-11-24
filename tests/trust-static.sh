@@ -13,8 +13,21 @@ if [ -z "$goroot" ] && [ -n "${LINE_ROOT:-}" ]; then
   PORT_DIR="$(cd "$here/.." && pwd)"; export PORT_DIR
   goroot="$(. "$PORT_DIR/build/env.sh" >/dev/null && printf '%s' "$WORK/go")" || { echo "env.sh failed for $LINE_ROOT" >&2; exit 1; }
 fi
+# spec: PORT.md, the build chain -- the Go minor decides where the line hooks loadSystemRoots: from the line's UPSTREAM_VERSION when a line is
+#       named, else from the tree's own VERSION file. A line whose tree is another minor is a failure, not a guess.
+gominor() { sed -n '1{s/^go//;s/^1\.\([0-9][0-9]*\).*$/\1/p;}' "$1" 2>/dev/null; }
+treeminor="$(gominor "$goroot/VERSION")"
+if [ -n "${LINE_ROOT:-}" ] && [ -z "${TRUST_STATIC_GOROOT:-}" ]; then
+  minor="$(gominor "$LINE_ROOT/UPSTREAM_VERSION")"
+  [ -n "$minor" ] || { echo "FAIL: cannot read a Go 1.N version from $LINE_ROOT/UPSTREAM_VERSION"; exit 1; }
+  [ -z "$treeminor" ] || [ "$treeminor" = "$minor" ] \
+    || { echo "FAIL: $LINE_ROOT is Go 1.$minor, but the tree at $goroot says Go 1.$treeminor (its VERSION) -- a stale builder?"; exit 1; }
+else
+  minor="$treeminor"
+fi
 [ -n "${TRUST_STATIC_GOROOT:-}" ] || [ -n "${LINE_ROOT:-}" ] || { echo "no toolchain named (set TRUST_STATIC_GOROOT, or LINE_ROOT after build-builder.sh) -- skipping"; exit 77; }
 [ -x "$goroot/bin/go" ] || { echo "FAIL: no built go at $goroot/bin/go (run build-builder.sh for LINE_ROOT, or point TRUST_STATIC_GOROOT at a built tree)"; exit 1; }
+[ -n "$minor" ] || { echo "FAIL: cannot tell which Go minor $goroot is (no go1.N first line in its VERSION)"; exit 1; }
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/trust-static.XXXXXX")" || exit 1
 [ -d "$tmp" ] || exit 1
 trap 'rm -rf "$tmp"' EXIT
@@ -29,9 +42,16 @@ bad() { echo "FAIL: $*"; fail=1; }
 #       policy to SecTrustCreateWithCertificates directly. A Linux job cannot run that path, so the source must say it.
 grep -q 'SecTrustCreateWithCertificates(certs, sslPolicy)' "$x509/root_darwin.go" \
   || bad "root_darwin.go no longer passes the SSL policy directly to SecTrustCreateWithCertificates -- 10.9's SecTrustEvaluate faults on a policies CFArray"
-# spec: PORT.md, the build chain -- loadSystemRoots hands darwin to the keychain union (the line's patch 0016)
-grep -q 'keychainUnionPlatformRoots(); handled' "$x509/root.go" \
-  || bad "root.go's loadSystemRoots no longer hands darwin to the keychain union (patch 0016)"
+# spec: PORT.md, the build chain -- loadSystemRoots hands darwin to the keychain union, where the line's Go minor keeps it: from Go 1.27 in
+#       root.go, through the one-statement hook of the line's patch 0016; on Go 1.26 in root_darwin.go, whose loadSystemRoots the line's
+#       0013 makes serve keychainUnionLoadSystemRoots(). One place per minor, never "either".
+if [ "$minor" -ge 27 ]; then
+  grep -q 'keychainUnionPlatformRoots(); handled' "$x509/root.go" \
+    || bad "root.go's loadSystemRoots no longer hands darwin to the keychain union (Go 1.$minor: the line's patch 0016)"
+else
+  grep -q 'return keychainUnionLoadSystemRoots()' "$x509/root_darwin.go" \
+    || bad "root_darwin.go's loadSystemRoots no longer serves the keychain union (Go 1.$minor: the line's patch 0013)"
+fi
 
 # spec: PORT.md, the build chain -- every non-darwin GOOS builds crypto/x509 through the overlay's root_keychainunion_other.go stub
 for os in linux windows; do

@@ -4,7 +4,8 @@
 #       mavericks-vm guest after installing the line's native pkg (and clang22, which cgo and the external link need).
 #       usage: GO_LINE=127 sh tests/on-target/run.sh        (GOROOT=<dir> overrides /usr/local/mavergreen/go$GO_LINE; GO_LINE is then
 #              read from `go version`)
-#       Covers: go version; crypto/x509's keychain-union, fallback and SSL_CERT_FILE tests, and patch 0018's darwin SKIPs with their reasons; the pure-Go link (default, CGO_ENABLED=0 and a go test
+#       Covers: go version; crypto/x509's keychain-union, fallback and SSL_CERT_FILE tests, and patch 0018's darwin SKIPs with their reasons
+#       (per Go minor: the tests that exist on darwin in that minor); the pure-Go link (default, CGO_ENABLED=0 and a go test
 #       binary all run); a cgo program that defines its own SecTrustEvaluateWithError; a cgo hello; both verifiers rejecting an
 #       untrusted chain; and no build prints a linker warning (tests/on-target/build-output.sh). Nothing here skips: a missing prerequisite is a failure, so the suite never passes by examining less.
 #       Exits 0 only when every check passed.
@@ -52,20 +53,40 @@ ot_check_output "crypto/x509 tests" "$out"
 printf '%s\n' "$out" | grep -q '^ok[[:space:]]' || bad "go test crypto/x509 did not report ok"
 failed="$(printf '%s\n' "$out" | grep -E '^[[:space:]]*--- FAIL: ' || true)"
 [ -z "$failed" ] || bad "tests failed on the target: $failed"
-# spec: on-target suite, check 2 -- patch 0018's four SKIPs are expected; any other skip is a test that did not run here
+# spec: on-target suite, check 2 -- each line's patch 0018 skips, with one reason per test, the upstream tests that assert upstream's darwin semantics.
+#       Which of them exist on darwin depends on the Go minor: Go 1.26 builds TestEnvVars and TestLoadSystemCertsLoadColonSeparatedDirs
+#       (root_unix_test.go) only for the BSDs, Linux and Solaris, and has no TestSSLCertEnvOverride (x509sslcertoverrideplatform arrived in
+#       Go 1.27). So 1.27 and later must skip all four and pass TestSSLCertEnvOverride; 1.26 must skip TestIssue51759 and TestHybridPool,
+#       and must not run the other three at all (if a later 1.26.x ran one, this list is stale and the line needs its 0018 reviewed).
+if [ "$minor" -ge 27 ]; then
+  skips="TestEnvVars TestLoadSystemCertsLoadColonSeparatedDirs TestIssue51759 TestHybridPool"
+  absent=""
+else
+  skips="TestIssue51759 TestHybridPool"
+  absent="TestEnvVars TestLoadSystemCertsLoadColonSeparatedDirs TestSSLCertEnvOverride"
+fi
+skipre="$(printf '%s' "$skips" | tr ' ' '|')"
+# spec: on-target suite, check 2 -- patch 0018's SKIPs are expected; any other skip is a test that did not run here
 skipped="$(printf '%s\n' "$out" | grep -E '^[[:space:]]*--- SKIP: ' \
-  | grep -v -E '^--- SKIP: (TestEnvVars|TestLoadSystemCertsLoadColonSeparatedDirs|TestIssue51759|TestHybridPool) ' || true)"
+  | grep -v -E "^--- SKIP: ($skipre) " || true)"
 [ -z "$skipped" ] || bad "tests skipped on the target (they must run here): $skipped"
 passed="$(printf '%s\n' "$out" | grep -c '^--- PASS: Test[A-Za-z_]*KeychainUnion' || true)"
 [ "$passed" -ge 27 ] || bad "expected >=27 KeychainUnion tests to pass, saw $passed -- did -run match nothing?"
 for t in TestFallback TestFallbackPanic; do
   printf '%s\n' "$out" | grep -q "^--- PASS: $t " || bad "upstream $t did not pass"
 done
-printf '%s\n' "$out" | grep -q '^--- PASS: TestSSLCertEnvOverride ' \
-  || bad "TestSSLCertEnvOverride did not pass -- on darwin it pins that x509sslcertoverrideplatform has no effect"
+if [ "$minor" -ge 27 ]; then
+  printf '%s\n' "$out" | grep -q '^--- PASS: TestSSLCertEnvOverride ' \
+    || bad "TestSSLCertEnvOverride did not pass -- on darwin it pins that x509sslcertoverrideplatform has no effect"
+fi
+for t in $absent; do
+  if printf '%s\n' "$out" | grep -qE "^[[:space:]]*--- (PASS|FAIL|SKIP): $t "; then
+    bad "upstream $t ran on darwin, but Go 1.$minor does not build it there -- this suite's per-minor list is stale; review the line's patch 0018"
+  fi
+done
 # spec: on-target suite, check 2 -- a bare SKIP is no proof: a test can skip for its own reason, so each must carry patch 0018's. go test -v prints the
 #       indented "root_test.go:NNN: darwin: ..." line just before the "--- SKIP: Test (...)" line.
-for t in TestEnvVars TestLoadSystemCertsLoadColonSeparatedDirs TestIssue51759 TestHybridPool; do
+for t in $skips; do
   case "$t" in
     TestEnvVars|TestLoadSystemCertsLoadColonSeparatedDirs) reason="the keychain union serves" ;;
     *) reason="Go's verifier over the keychain union is the default" ;;
@@ -80,7 +101,9 @@ for t in TestEnvVars TestLoadSystemCertsLoadColonSeparatedDirs TestIssue51759 Te
     bad "upstream $t did not SKIP on darwin -- patch 0018 is missing, or it asserts upstream's darwin semantics (env-exclusive roots, or Apple's verifier as the default), which go$GO_LINE deliberately does not have"
   fi
 done
-echo "ok   crypto/x509: $passed KeychainUnion tests, TestFallback, TestFallbackPanic, TestSSLCertEnvOverride; patch 0018's 4 SKIPs with their reasons"
+nskips="$(printf '%s' "$skips" | wc -w | tr -d ' ')"
+if [ "$minor" -ge 27 ]; then also=", TestSSLCertEnvOverride"; else also=""; fi
+echo "ok   crypto/x509: $passed KeychainUnion tests, TestFallback, TestFallbackPanic$also; patch 0018's $nskips SKIPs with their reasons"
 
 # spec: on-target suite, check 3 -- pure-go-link: a pure-Go program must be 10.9-safe -- external-linked through the wrapper (Recaulk, minos 10.9), not internal-linked
 #       to Go's own floor with clock_gettime unresolved. Each build must run here.
